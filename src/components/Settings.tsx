@@ -4,27 +4,23 @@ import {
   TextField,
   Button,
   Typography,
-  Paper,
-  Alert,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  SelectChangeEvent,
-  Chip,
-  IconButton,
-  Tooltip,
-  Grid,
   CircularProgress,
   Card,
   CardContent,
   CardActions,
-  Snackbar,
+  Grid,
   Stack,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Switch,
+  FormControlLabel,
+  Snackbar,
+  Alert,
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, OpenInNew as OpenInNewIcon, Save as SaveIcon, Warning as WarningIcon, Email as EmailIcon, Remove as RemoveIcon, Preview as PreviewIcon } from '@mui/icons-material';
+import { Save as SaveIcon, Refresh as RefreshIcon, Mail as MailIcon } from '@mui/icons-material';
 import axios from 'axios';
-import { Config, NotificationSettings } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
 
 const INTERVALS = [
@@ -34,420 +30,181 @@ const INTERVALS = [
   { label: '30 minuten', value: '*/30 * * * *' },
   { label: '15 minuten', value: '*/15 * * * *' },
   { label: '10 minuten', value: '*/10 * * * *' },
-  { label: '1 minuut', value: '* * * * *' },
+  { label: '5 minuten', value: '*/5 * * * *' },
 ];
+
+interface SettingsState {
+  loginUrl: string;
+  targetUrl: string;
+  schedule: string;
+  usernameSelector: string;
+  passwordSelector: string;
+  submitSelector: string;
+  username: string;
+  password: string;
+  emailEnabled: boolean;
+  toEmail: string;
+}
+
+const defaultState: SettingsState = {
+  loginUrl: '',
+  targetUrl: '',
+  schedule: '*/10 * * * *',
+  usernameSelector: '',
+  passwordSelector: '',
+  submitSelector: '',
+  username: '',
+  password: '',
+  emailEnabled: false,
+  toEmail: '',
+};
 
 const Settings: React.FC = () => {
   const { showNotification } = useNotification();
-  const [config, setConfig] = useState<{
-    website: {
-      loginUrl: string;
-      targetUrl: string;
-      selectors: string[];
-    };
-    schedule: string;
-    email: {
-      enabled: boolean;
-      service: string;
-      auth: {
-        user: string;
-        pass: string;
-      };
-      from: string;
-      to: string;
-      subject: string;
-    };
-  }>({
-    website: {
-      loginUrl: '',
-      targetUrl: '',
-      selectors: []
-    },
-    schedule: '*/5 * * * *',
-    email: {
-      enabled: false,
-      service: '',
-      auth: {
-        user: '',
-        pass: ''
-      },
-      from: '',
-      to: '',
-      subject: ''
-    }
-  });
+  const [form, setForm] = useState<SettingsState>(defaultState);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [newSelector, setNewSelector] = useState('');
-  const [previewContent, setPreviewContent] = useState<string | null>(null);
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [emailTestStatus, setEmailTestStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [emailTestMessage, setEmailTestMessage] = useState('');
 
-  const fetchConfig = async () => {
+  const loadConfig = async () => {
+    setLoading(true);
     try {
-      console.log('Debug - Fetching config...');
-      const response = await fetch('/api/config');
-      if (!response.ok) {
-        throw new Error('Failed to fetch config');
-      }
-      const data = await response.json();
-      console.log('Debug - Received config:', data);
-      
-      setConfig(prev => ({
-        ...prev,
-        website: {
-          ...prev.website,
-          ...data.website,
-          selectors: data.website?.selectors || []
-        },
-        schedule: data.schedule || prev.schedule,
-        email: {
-          ...prev.email,
-          ...data.email,
-          auth: {
-            ...prev.email.auth,
-            ...data.email?.auth
-          }
-        }
-      }));
-      setError(null);
-    } catch (error) {
-      console.error('Error fetching config:', error);
-      setError('Failed to load configuration');
-      showNotification('Failed to load configuration', 'error');
+      const res = await axios.get('/api/config');
+      const { website = {}, schedule = defaultState.schedule } = res.data;
+      setForm({
+        loginUrl: website.loginUrl || '',
+        targetUrl: website.targetUrl || '',
+        schedule,
+        usernameSelector: website.usernameSelector || '',
+        passwordSelector: website.passwordSelector || '',
+        submitSelector: website.submitSelector || '',
+        username: website.username || '',
+        password: website.password || '',
+        emailEnabled: website.emailEnabled ?? false,
+        toEmail: website.toEmail || '',
+      });
+    } catch (err) {
+      console.error('Error loading config', err);
+      showNotification('Fout bij laden configuratie', 'error');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchConfig();
-  }, [showNotification]);
+    loadConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const update = (field: keyof SettingsState, value: any) => setForm(prev => ({ ...prev, [field]: value }));
+
+  const save = async () => {
+    setSaving(true);
     try {
-      await axios.post('/api/config', config);
-      setSuccess(true);
-      setError(null);
-      setTimeout(() => setSuccess(false), 3000);
-      localStorage.setItem('websiteConfig', JSON.stringify(config));
-      showNotification('Settings saved successfully', 'success');
-    } catch (err) {
-      setError('Failed to save configuration');
-      console.error(err);
-    }
-  };
-
-  const handleChange = (field: string, value: string) => {
-    setConfig((prev) => ({
-      ...prev,
-      website: {
-        ...prev.website,
-        [field]: value,
-      },
-    }));
-  };
-
-  const handleIntervalChange = (event: SelectChangeEvent) => {
-    setConfig((prev) => ({
-      ...prev,
-      schedule: event.target.value
-    }));
-  };
-
-  const handleAddSelector = () => {
-    if (newSelector.trim()) {
-      setConfig((prev) => ({
-        ...prev,
+      await axios.post('/api/config', {
         website: {
-          ...prev.website,
-          selectors: [...prev.website.selectors, newSelector.trim()],
+          loginUrl: form.loginUrl,
+          targetUrl: form.targetUrl,
+          usernameSelector: form.usernameSelector,
+          passwordSelector: form.passwordSelector,
+          submitSelector: form.submitSelector,
+          username: form.username,
+          password: form.password,
+          emailEnabled: form.emailEnabled,
+          toEmail: form.toEmail,
         },
-      }));
-      setNewSelector('');
-    }
-  };
-
-  const handleRemoveSelector = (index: number) => {
-    setConfig((prev) => ({
-      ...prev,
-      website: {
-        ...prev.website,
-        selectors: prev.website.selectors.filter((_, i) => i !== index),
-      },
-    }));
-  };
-
-  const handlePreview = async () => {
-    if (!config.website.targetUrl) {
-      showNotification('Please enter a target URL', 'error');
-      return;
-    }
-
-    setIsLoadingPreview(true);
-    setPreviewError(null);
-    setPreviewContent(null);
-
-    try {
-      const response = await axios.post('/api/proxy', { url: config.website.targetUrl });
-      setPreviewContent(response.data.content);
-    } catch (err) {
-      setPreviewError('Failed to fetch preview content');
-      showNotification('Failed to load preview', 'error');
-      console.error('Preview error:', err);
-    } finally {
-      setIsLoadingPreview(false);
-    }
-  };
-
-  const handleOpenWebsite = () => {
-    if (config.website.targetUrl) {
-      window.open(config.website.targetUrl, '_blank', 'noopener,noreferrer');
-    }
-  };
-
-  const handleTestEmail = async () => {
-    if (!config.email?.to) {
-      showNotification('Please enter an email address', 'error');
-      return;
-    }
-
-    setEmailTestStatus('loading');
-    try {
-      const response = await fetch('http://localhost:3002/api/test-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': process.env.REACT_APP_EMAIL_SERVICE_API_KEY || ''
-        },
-        body: JSON.stringify({ to: config.email.to })
+        schedule: form.schedule,
       });
+      showNotification('Instellingen opgeslagen', 'success');
+      setSuccess(true);
+    } catch (err) {
+      console.error('Save failed', err);
+      showNotification('Opslaan mislukt', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-      const data = await response.json();
-      if (response.ok) {
-        setEmailTestStatus('success');
-        setEmailTestMessage('Test email sent successfully!');
-      } else {
-        setEmailTestStatus('error');
-        setEmailTestMessage(data.error || 'Failed to send test email');
-      }
-    } catch (error) {
-      setEmailTestStatus('error');
-      setEmailTestMessage('Failed to send test email. Please check the console for details.');
-      console.error('Error sending test email:', error);
+  const sendTestEmail = async () => {
+    try {
+      await axios.post('/api/test-email', { to: form.toEmail }, {
+        headers: { 'x-api-key': process.env.REACT_APP_EMAIL_API_KEY || '' },
+      });
+      showNotification('Test e-mail verzonden', 'success');
+    } catch (err) {
+      console.error('Test email failed', err);
+      showNotification('Test e-mail mislukt', 'error');
     }
   };
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
         <CircularProgress />
-      </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-        <Button
-          variant="contained"
-          onClick={() => {
-            setLoading(true);
-            setError(null);
-            fetchConfig();
-          }}
-        >
-          Retry
-        </Button>
       </Box>
     );
   }
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Settings
-      </Typography>
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mb: 2 }}>Settings saved successfully!</Alert>}
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Website Configuration
-        </Typography>
-        <form onSubmit={handleSubmit}>
-          <Stack spacing={3}>
-            <TextField
-              fullWidth
-              label="Login URL"
-              value={config.website.loginUrl}
-              onChange={(e) => setConfig({ ...config, website: { ...config.website, loginUrl: e.target.value } })}
-            />
-            <TextField
-              fullWidth
-              label="Target URL"
-              value={config.website.targetUrl}
-              onChange={(e) => setConfig({ ...config, website: { ...config.website, targetUrl: e.target.value } })}
-            />
-            <Box>
-              <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                <TextField
-                  fullWidth
-                  label="New Selector"
-                  value={newSelector}
-                  onChange={(e) => setNewSelector(e.target.value)}
-                />
-                <Button
-                  variant="contained"
-                  onClick={handleAddSelector}
-                  disabled={!newSelector.trim()}
-                  startIcon={<AddIcon />}
-                >
-                  Add
-                </Button>
-                <Button
-                  variant="outlined"
-                  onClick={handlePreview}
-                  disabled={!config.website.targetUrl}
-                  startIcon={<PreviewIcon />}
-                >
-                  Preview
-                </Button>
-                <Button
-                  variant="outlined"
-                  onClick={() => window.open(config.website.targetUrl, '_blank')}
-                  disabled={!config.website.targetUrl}
-                  startIcon={<OpenInNewIcon />}
-                >
-                  Open
-                </Button>
-              </Box>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                {config.website.selectors.map((selector, index) => (
-                  <Chip
-                    key={index}
-                    label={selector}
-                    onDelete={() => handleRemoveSelector(index)}
-                    deleteIcon={<RemoveIcon />}
-                  />
-                ))}
-              </Box>
-            </Box>
-            <FormControl fullWidth>
-              <InputLabel>Check Interval</InputLabel>
-              <Select
-                value={config.schedule}
-                label="Check Interval"
-                onChange={handleIntervalChange}
-                required
-              >
-                {INTERVALS.map((interval) => (
-                  <MenuItem key={interval.value} value={interval.value}>
-                    {interval.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            {config.website.targetUrl && (
-              <Card variant="outlined">
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                    <Typography variant="subtitle1">
-                      Website Preview
-                    </Typography>
-                  </Box>
-                  {isLoadingPreview ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
-                      <CircularProgress size={24} />
-                    </Box>
-                  ) : previewError ? (
-                    <Alert severity="error" sx={{ mb: 2 }}>
-                      {previewError}
-                    </Alert>
-                  ) : previewContent ? (
-                    <Paper sx={{ p: 2, maxHeight: '400px', overflow: 'auto' }}>
-                      <div dangerouslySetInnerHTML={{ __html: previewContent }} />
-                    </Paper>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      Click the button below to load a preview of the website.
-                    </Typography>
-                  )}
-                  <Typography variant="body2" sx={{ mt: 1 }}>
-                    URL: {config.website.targetUrl}
-                  </Typography>
-                </CardContent>
-                <CardActions>
-                  <Button
-                    startIcon={<OpenInNewIcon />}
-                    onClick={handleOpenWebsite}
-                    color="primary"
-                  >
-                    Open Website
-                  </Button>
-                  <Button
-                    onClick={handlePreview}
-                    disabled={isLoadingPreview}
-                    color="primary"
-                  >
-                    {isLoadingPreview ? 'Loading...' : 'Load Preview'}
-                  </Button>
-                </CardActions>
-              </Card>
-            )}
-            <Button
-              type="submit"
-              variant="contained"
-              color="primary"
-              fullWidth
-            >
-              Save Settings
-            </Button>
-          </Stack>
-        </form>
-      </Paper>
+      <Typography variant="h4" gutterBottom>Settings</Typography>
+      <Grid container spacing={2}>
+        {/* URLs */}
+        <Grid item xs={12} md={6}>
+          <TextField label="Login URL" fullWidth value={form.loginUrl} onChange={e => update('loginUrl', e.target.value)} required />
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <TextField label="Target URL" fullWidth value={form.targetUrl} onChange={e => update('targetUrl', e.target.value)} required />
+        </Grid>
 
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Email Configuration
-        </Typography>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <TextField
-            fullWidth
-            label="Email Recipient"
-            value={config.email.to}
-            onChange={(e) => setConfig({ ...config, email: { ...config.email, to: e.target.value } })}
-            margin="normal"
-          />
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<EmailIcon />}
-            onClick={handleTestEmail}
-            disabled={emailTestStatus === 'loading'}
-          >
-            Send Test Email
-          </Button>
-        </Box>
-      </Paper>
+        {/* Cron interval */}
+        <Grid item xs={12} md={6}>
+          <FormControl fullWidth>
+            <InputLabel>Check Interval</InputLabel>
+            <Select value={form.schedule} label="Check Interval" onChange={e => update('schedule', e.target.value)}>
+              {INTERVALS.map(i => <MenuItem key={i.value} value={i.value}>{i.label}</MenuItem>)}
+            </Select>
+          </FormControl>
+        </Grid>
 
-      <Snackbar
-        open={emailTestStatus !== 'idle'}
-        autoHideDuration={6000}
-        onClose={() => setEmailTestStatus('idle')}
-      >
-        <Alert
-          severity={emailTestStatus === 'success' ? 'success' : 'error'}
-          onClose={() => setEmailTestStatus('idle')}
-        >
-          {emailTestMessage}
-        </Alert>
+        {/* Selectors */}
+        <Grid item xs={12} md={4}>
+          <TextField label="Username Selector" fullWidth value={form.usernameSelector} onChange={e=>update('usernameSelector',e.target.value)} />
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <TextField label="Password Selector" fullWidth value={form.passwordSelector} onChange={e=>update('passwordSelector',e.target.value)} />
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <TextField label="Submit Selector" fullWidth value={form.submitSelector} onChange={e=>update('submitSelector',e.target.value)} />
+        </Grid>
+
+        {/* Credentials */}
+        <Grid item xs={12} md={6}>
+          <TextField label="Username" fullWidth value={form.username} onChange={e=>update('username',e.target.value)} />
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <TextField label="Password" type="password" fullWidth value={form.password} onChange={e=>update('password',e.target.value)} />
+        </Grid>
+
+        {/* Email */}
+        <Grid item xs={12} md={6}>
+          <FormControlLabel control={<Switch checked={form.emailEnabled} onChange={e=>update('emailEnabled',e.target.checked)} />} label="Enable Email Notifications" />
+        </Grid>
+        {form.emailEnabled && (
+          <Grid item xs={12} md={6}>
+            <TextField label="To Email" fullWidth value={form.toEmail} onChange={e=>update('toEmail',e.target.value)} />
+          </Grid>
+        )}
+      </Grid>
+
+      <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
+        <Button variant="outlined" startIcon={<RefreshIcon />} onClick={loadConfig} disabled={saving}>Reload</Button>
+        <Button variant="contained" startIcon={<SaveIcon />} onClick={save} disabled={saving}>Save</Button>
+        {form.emailEnabled && <Button variant="contained" color="secondary" startIcon={<MailIcon />} onClick={sendTestEmail}>Send Test Email</Button>}
+      </Stack>
+
+      <Snackbar open={success} autoHideDuration={3000} onClose={()=>setSuccess(false)}>
+        <Alert severity="success" onClose={()=>setSuccess(false)}>Saved!</Alert>
       </Snackbar>
     </Box>
   );

@@ -1,56 +1,39 @@
 import React, { useEffect, useState } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
-  Chip,
+  CssBaseline,
+  Paper,
   CircularProgress,
   Alert,
+  Avatar,
+  Chip,
   Stack,
-  Divider,
-  Tabs,
-  Tab,
+  Card,
   CardMedia,
-  Container,
+  CardContent,
+  CardActions,
+  Button,
   Grid,
 } from '@mui/material';
-import { AccessTime, NewReleases, History } from '@mui/icons-material';
+import { ThemeProvider, createTheme, alpha } from '@mui/material/styles';
+import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { Item } from '../types';
+import { AccessTime, NewReleases } from '@mui/icons-material';
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
+const pollingInterval = 30000; // 30 seconds
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`simple-tabpanel-${index}`}
-      aria-labelledby={`simple-tab-${index}`}
-      {...other}
-    >
-      {value === index && (
-        <Box sx={{ p: 3 }}>
-          {children}
-        </Box>
-      )}
-    </div>
-  );
-}
+const darkTheme = createTheme({
+  palette: { mode: 'dark' },
+});
 
 const Dashboard: React.FC = () => {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
-  const [tabValue, setTabValue] = useState(0);
 
   const fetchItems = async () => {
     try {
@@ -64,12 +47,25 @@ const Dashboard: React.FC = () => {
         location: listing.location,
         date: listing.date,
         seller: listing.seller,
-        url: listing.link,
+        url: listing.url,
         selector: listing.selector || 'default',
-        imageUrl: listing.imageUrl
+        imageUrl: listing.imageUrl,
+        condition: listing.condition,
+        category: listing.category,
+        attributes: listing.attributes
       }));
+
       // Sort items by date (newest first)
       transformedItems.sort((a: Item, b: Item) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      // Find new items by comparing with existing ones
+      const existingIds = new Set(items.map((item: Item) => item.id));
+      const newItems = transformedItems.filter((item: Item) => !existingIds.has(item.id));
+
+      if (newItems.length > 0) {
+        setHighlightIds(new Set(newItems.map((item: Item) => item.id)));
+      }
+
       setItems(transformedItems);
       setLastCheck(new Date());
       setError(null);
@@ -83,133 +79,9 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchItems();
-    const interval = setInterval(fetchItems, 30000);
+    const interval = setInterval(fetchItems, pollingInterval);
     return () => clearInterval(interval);
   }, []);
-
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-  };
-
-  const getProxiedImageUrl = (imageUrl: string) => {
-    if (!imageUrl) return '';
-    return `${process.env.REACT_APP_API_URL}/proxy-image?url=${encodeURIComponent(imageUrl)}`;
-  };
-
-  const renderItemCard = (item: Item) => (
-    <Grid component="div" sx={{ gridColumn: { xs: '1 / -1', sm: '1 / span 6', md: '1 / span 4' } }} key={item.id}>
-      <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', transition: 'transform 0.2s', '&:hover': { transform: 'scale(1.02)' } }}>
-        {item.imageUrl && (
-          <CardMedia
-            component="img"
-            height="250"
-            image={getProxiedImageUrl(item.imageUrl)}
-            alt={item.title}
-            sx={{ objectFit: 'cover', cursor: 'pointer' }}
-            onClick={() => window.open(item.url, '_blank')}
-          />
-        )}
-        <CardContent sx={{ flexGrow: 1 }}>
-          <Stack spacing={2}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <Typography variant="h6" component="div" sx={{ wordBreak: 'break-word', fontWeight: 'bold' }}>
-                {item.title || 'No title available'}
-              </Typography>
-              {item.price && (
-                <Chip
-                  label={item.price}
-                  color="primary"
-                  size="small"
-                  sx={{ fontWeight: 'bold', fontSize: '1rem' }}
-                />
-              )}
-            </Box>
-
-            {item.description && (
-              <Typography variant="body2" color="text.secondary" sx={{ 
-                display: '-webkit-box',
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}>
-                {item.description}
-              </Typography>
-            )}
-
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                {item.date && (
-                  <Chip
-                    icon={<AccessTime />}
-                    label={formatDate(item.date)}
-                    size="small"
-                    variant="outlined"
-                  />
-                )}
-                {item.location && (
-                  <Chip
-                    label={item.location}
-                    size="small"
-                    variant="outlined"
-                  />
-                )}
-                {item.seller && (
-                  <Chip
-                    label={`Seller: ${item.seller}`}
-                    size="small"
-                    variant="outlined"
-                  />
-                )}
-              </Box>
-
-              {item.condition && (
-                <Chip
-                  label={`Condition: ${item.condition}`}
-                  size="small"
-                  variant="outlined"
-                  color="secondary"
-                />
-              )}
-
-              {item.category && (
-                <Chip
-                  label={`Category: ${item.category}`}
-                  size="small"
-                  variant="outlined"
-                  color="info"
-                />
-              )}
-            </Box>
-
-            <Divider />
-
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">
-                {item.selector ? `Detected via: ${item.selector}` : 'Detected via: default'}
-              </Typography>
-              {item.url && (
-                <a
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ textDecoration: 'none' }}
-                >
-                  <Chip
-                    label="View on Marktplaats"
-                    color="primary"
-                    variant="outlined"
-                    size="small"
-                    sx={{ cursor: 'pointer' }}
-                  />
-                </a>
-              )}
-            </Box>
-          </Stack>
-        </CardContent>
-      </Card>
-    </Grid>
-  );
 
   const formatDate = (dateString: string) => {
     try {
@@ -229,6 +101,11 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const getProxiedImageUrl = (imageUrl: string) => {
+    if (!imageUrl) return '';
+    return `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
@@ -238,68 +115,136 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 3 }}>
-        <Box sx={{ gridColumn: '1 / -1' }}>
-          <Stack spacing={3}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="h4">Dashboard</Typography>
+    <ThemeProvider theme={darkTheme}>
+      <CssBaseline />
+      <Box
+        sx={{
+          bgcolor: 'background.default',
+          minHeight: '100vh',
+          py: 6,
+          display: 'flex',
+          justifyContent: 'center',
+        }}
+      >
+        <Paper elevation={3} sx={{ width: '100%', maxWidth: 1200, mx: 2 }}>
+          <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="h6" component="h2">
+                Live Items Feed
+              </Typography>
               {lastCheck && (
-                <Typography variant="body2" color="text.secondary">
-                  Last checked: {lastCheck.toLocaleTimeString()}
+                <Typography variant="caption" color="text.secondary">
+                  Last updated: {lastCheck.toLocaleTimeString()}
                 </Typography>
               )}
-            </Box>
+            </Stack>
+          </Box>
 
-            {error && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {error}
-              </Alert>
-            )}
+          {error && (
+            <Alert severity="error" sx={{ m: 2 }}>
+              {error}
+            </Alert>
+          )}
 
-            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-              <Tabs value={tabValue} onChange={handleTabChange}>
-                <Tab icon={<NewReleases />} label="New Items" />
-                <Tab icon={<History />} label="All Items" />
-              </Tabs>
-            </Box>
-
-            <TabPanel value={tabValue} index={0}>
-              <Box sx={{
-                display: 'grid',
-                gridTemplateColumns: {
-                  xs: '1fr',
-                  sm: 'repeat(2, 1fr)',
-                  md: 'repeat(3, 1fr)'
-                },
-                gap: 3
-              }}>
-                {items.filter(item => {
-                  const itemDate = new Date(item.date);
-                  const now = new Date();
-                  const hoursDiff = (now.getTime() - itemDate.getTime()) / (1000 * 60 * 60);
-                  return hoursDiff <= 24; // Show items from the last 24 hours as "new"
-                }).map(renderItemCard)}
-              </Box>
-            </TabPanel>
-
-            <TabPanel value={tabValue} index={1}>
-              <Box sx={{
-                display: 'grid',
-                gridTemplateColumns: {
-                  xs: '1fr',
-                  sm: 'repeat(2, 1fr)',
-                  md: 'repeat(3, 1fr)'
-                },
-                gap: 3
-              }}>
-                {items.map(renderItemCard)}
-              </Box>
-            </TabPanel>
-          </Stack>
-        </Box>
+          <Grid container spacing={2} sx={{ p: 2 }}>
+            <AnimatePresence initial={false}>
+              {items.map((item) => (
+                <Grid item xs={12} sm={6} md={4} key={item.id} component={motion.div}
+                  layout
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <Card
+                    sx={(theme) => ({
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      bgcolor: highlightIds.has(item.id)
+                        ? alpha(theme.palette.success.light, 0.3)
+                        : 'background.paper',
+                    })}
+                    elevation={4}
+                  >
+                    {item.imageUrl && (
+                      <CardMedia
+                        component="img"
+                        height="180"
+                        image={getProxiedImageUrl(item.imageUrl)}
+                        alt={item.title}
+                      />
+                    )}
+                    <CardContent sx={{ flexGrow: 1 }}>
+                      <Typography gutterBottom variant="h6" component="div">
+                        {item.title}
+                      </Typography>
+                      {item.price && (
+                        <Typography variant="h5" color="primary" gutterBottom>
+                          {item.price}
+                        </Typography>
+                      )}
+                      {item.description && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                          {item.description}
+                        </Typography>
+                      )}
+                      <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                        {item.condition && (
+                          <Chip
+                            label={item.condition}
+                            size="small"
+                            color="secondary"
+                            variant="outlined"
+                          />
+                        )}
+                        {item.category && (
+                          <Chip
+                            label={item.category}
+                            size="small"
+                            color="primary"
+                            variant="outlined"
+                          />
+                        )}
+                      </Stack>
+                      <Stack direction="row" spacing={2}>
+                        {item.seller && (
+                          <Typography variant="body2" color="text.secondary">
+                            Verkoper: {item.seller}
+                          </Typography>
+                        )}
+                        {item.location && (
+                          <Typography variant="body2" color="text.secondary">
+                            Locatie: {item.location}
+                          </Typography>
+                        )}
+                      </Stack>
+                      {item.date && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                          Geplaatst: {formatDate(item.date)}
+                        </Typography>
+                      )}
+                    </CardContent>
+                    <CardActions sx={{ p: 2 }}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        color="primary"
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Bekijk advertentie
+                      </Button>
+                    </CardActions>
+                  </Card>
+                </Grid>
+              ))}
+            </AnimatePresence>
+          </Grid>
+        </Paper>
       </Box>
-    </Container>
+    </ThemeProvider>
   );
 };
 
