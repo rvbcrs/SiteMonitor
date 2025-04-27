@@ -22,11 +22,42 @@ import axios from 'axios';
 import { Item } from '../types';
 import { AccessTime, NewReleases } from '@mui/icons-material';
 
-const pollingInterval = 30000; // 30 seconds
+// default interval before config loads (in seconds)
+const defaultIntervalSec = 30;
 
-const darkTheme = createTheme({
-  palette: { mode: 'dark' },
+const theme = createTheme({
+  palette: {
+    mode: 'light',
+    background: {
+      default: '#b7e0ef'
+    },
+    text: {
+      primary: '#000'
+    }
+  },
 });
+
+// parseCronToSeconds supports minute and hour intervals
+const parseCronToSeconds = (cron: string): number => {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return defaultIntervalSec;
+  const [minute, hour] = parts;
+  // minute intervals '*/N'
+  if (minute.startsWith('*/')) {
+    const n = parseInt(minute.slice(2), 10);
+    return isNaN(n) ? defaultIntervalSec : n * 60;
+  }
+  // hour intervals '0 */H'
+  if (minute === '0') {
+    if (hour.startsWith('*/')) {
+      const h = parseInt(hour.slice(2), 10);
+      return isNaN(h) ? defaultIntervalSec : h * 3600;
+    }
+    // default hourly
+    return 3600;
+  }
+  return defaultIntervalSec;
+};
 
 const Dashboard: React.FC = () => {
   const [items, setItems] = useState<Item[]>([]);
@@ -34,6 +65,10 @@ const Dashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
+  // scheduleSec is aantal seconden tussen checks
+  const [scheduleSec, setScheduleSec] = useState<number>(defaultIntervalSec);
+  // secondsRemaining is countdown naar volgende check
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(defaultIntervalSec);
 
   const fetchItems = async () => {
     try {
@@ -85,17 +120,41 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  // Laad schedule uit settings en trigger eerste fetch
   useEffect(() => {
-    fetchItems();
-    const interval = setInterval(fetchItems, pollingInterval);
-    return () => clearInterval(interval);
+    axios.get('/api/config')
+      .then(res => {
+        const cron = res.data.schedule as string;
+        const sec = parseCronToSeconds(cron);
+        setScheduleSec(sec);
+        setSecondsRemaining(sec);
+        fetchItems();
+      })
+      .catch(err => {
+        console.error('Error loading schedule config:', err);
+        fetchItems();
+      });
   }, []);
+
+  // Poll op basis van scheduleSec
+  useEffect(() => {
+    const id = setInterval(fetchItems, scheduleSec * 1000);
+    return () => clearInterval(id);
+  }, [scheduleSec]);
+
+  // Countdown timer
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSecondsRemaining(prev => (prev > 0 ? prev - 1 : scheduleSec));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [scheduleSec]);
 
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
       if (isNaN(date.getTime())) {
-        return 'Invalid date';
+        return dateString;
       }
       return date.toLocaleDateString('en-US', {
         year: 'numeric',
@@ -105,13 +164,24 @@ const Dashboard: React.FC = () => {
         minute: '2-digit'
       });
     } catch (error) {
-      return 'Invalid date';
+      return dateString;
     }
   };
 
   const getProxiedImageUrl = (imageUrl: string) => {
     if (!imageUrl) return '';
     return `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+  };
+
+  // helper to format seconds into HH:mm:ss
+  const formatDuration = (totalSeconds: number): string => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const hh = hours.toString().padStart(2, '0');
+    const mm = minutes.toString().padStart(2, '0');
+    const ss = seconds.toString().padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
   };
 
   if (loading) {
@@ -123,7 +193,7 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <ThemeProvider theme={darkTheme}>
+    <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box
         sx={{
@@ -134,17 +204,25 @@ const Dashboard: React.FC = () => {
           justifyContent: 'center',
         }}
       >
-        <Paper elevation={3} sx={{ width: '100%', maxWidth: 1200, mx: 2 }}>
+        <Box sx={{ width: '100%', maxWidth: 1200, mx: 2 }}>
           <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Typography variant="h6" component="h2">
                 Live Items Feed
               </Typography>
-              {lastCheck && (
-                <Typography variant="caption" color="text.secondary">
-                  Last updated: {lastCheck.toLocaleTimeString()}
-                </Typography>
-              )}
+              <Stack direction="row" spacing={2} alignItems="center">
+                {lastCheck && (
+                  <Typography variant="caption" color="text.secondary">
+                    Last updated: {lastCheck.toLocaleTimeString()}
+                  </Typography>
+                )}
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <AccessTime fontSize="small" color="action" />
+                  <Typography variant="caption" color="text.secondary">
+                    Next check in: {formatDuration(secondsRemaining)}
+                  </Typography>
+                </Stack>
+              </Stack>
             </Stack>
           </Box>
 
@@ -164,45 +242,48 @@ const Dashboard: React.FC = () => {
                   exit={{ opacity: 0, y: 10 }}
                   transition={{ duration: 0.25 }}
                 >
-                  <Paper elevation={highlightIds.has(item.id) ? 4 : 1} sx={{ p: 2, display: 'flex', mb: 2 }}>
-                    <Box sx={{ width: 200, height: 150, flexShrink: 0, bgcolor: 'grey.100' }}>
-                      {item.imageUrl ? (
-                        <Box component="img" src={getProxiedImageUrl(item.imageUrl)} alt={item.title}
-                          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                      ) : (
-                        <Box sx={{ width: '100%', height: '100%', bgcolor: 'grey.200' }} />
-                      )}
+                  <Card elevation={highlightIds.has(item.id) ? 8 : 3} sx={{ display: 'flex', mb: 4, borderRadius: 2, overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                    {/* Left (red) side */}
+                    <Box sx={{ width: 220, px: 3, py: 4, bgcolor: '#c96b60', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                       <Chip label={item.seller || item.title.split(' ')[0]} sx={{ bgcolor: '#b45b52', color: '#fff', mb: 3, fontWeight: 600, fontSize: 14 }} />
+                       {item.imageUrl ? (
+                           <Avatar src={getProxiedImageUrl(item.imageUrl)} alt={item.title} sx={{ width: 120, height: 120, mb: 3 }} />
+                       ) : (
+                           <Avatar sx={{ width: 120, height: 120, mb: 3, bgcolor: 'grey.200' }}>
+                               {item.title.charAt(0)}
+                           </Avatar>
+                       )}
+                       <Chip label={item.price} sx={{ bgcolor: '#b45b52', color: '#fff', fontWeight: 600, fontSize: 14 }} />
                     </Box>
-                    <Box sx={{ flexGrow: 1, pl: 2, display: 'flex', flexDirection: 'column' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>{item.title}</Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Button size="small" href={item.url}>Zie omschrijving</Button>
-                          <Typography component="a" href={item.url} sx={{ color: 'primary.main', textDecoration: 'none', fontWeight: 500 }}>
-                            {item.seller}
-                          </Typography>
-                        </Box>
-                      </Box>
-                      <Typography variant="body2" color="text.secondary" sx={{ my: 1, flexGrow: 1 }}>
-                        {item.description}
-                      </Typography>
-                      <Box sx={{ display: 'flex', justifyContent: 'flex-start', gap: 2, mb: 1 }}>
-                        <Typography variant="caption" color="text.secondary">{formatDate(item.date)}</Typography>
-                        <Typography variant="caption" color="text.secondary">{item.location}</Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                        {item.attributes.map((attr: string, i: number) => (
-                          <Chip key={i} label={attr} size="small" variant="outlined" />
-                        ))}
-                      </Box>
+                    {/* Right (white) side */}
+                    <Box sx={{ flex: 1, backgroundColor: '#fff', p: 3, display: 'flex', flexDirection: 'column' }}>
+                       <CardContent sx={{ flex: '1 0 auto', pb: 0 }}>
+                           <Typography variant="h5" component="div" sx={{ fontWeight: 700, color: '#000', mb: 2 }}>{item.title}</Typography>
+                           <Typography variant="body1" sx={{ color: '#000', mb: 2 }}>
+                               {item.description}
+                           </Typography>
+                       </CardContent>
+                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+                           <Button size="small" href={item.url} sx={{ textTransform: 'none' }}>Zie omschrijving</Button>
+                           <Typography variant="caption" sx={{ color: '#000' }}>
+                               {formatDate(item.date)}
+                           </Typography>
+                           <Typography variant="caption" sx={{ color: '#000' }}>
+                               {item.location}
+                           </Typography>
+                       </Box>
+                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2 }}>
+                           {item.attributes.map((attr: string, i: number) => (
+                               <Chip key={i} label={attr} size="small" variant="outlined" sx={{ fontSize: 12, color: '#000', borderColor: '#ccc' }} />
+                           ))}
+                       </Box>
                     </Box>
-                  </Paper>
+                  </Card>
                 </Grid>
               ))}
             </AnimatePresence>
           </Grid>
-        </Paper>
+        </Box>
       </Box>
     </ThemeProvider>
   );

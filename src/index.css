@@ -2,12 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-supabase-dark text-supabase-light;
+/* body {
+  background-color: #b7e0ef;
+  color: #000;
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Abel', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Oxygen Sans", Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+} */
+@import url("https://fonts.googleapis.com/css?family=Abel");
+
+body {
+  background-color: #94ddee;
+  margin: 0;
+  font-family: Abel, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
