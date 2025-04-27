@@ -57,6 +57,7 @@ export interface Item {
   imageUrl?: string;
   condition?: string;
   category?: string;
+  attributes: string[];
 }
 
 export interface Monitor {

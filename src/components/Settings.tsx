@@ -43,7 +43,13 @@ interface SettingsState {
   username: string;
   password: string;
   emailEnabled: boolean;
-  toEmail: string;
+  emailService: string;
+  emailUser: string;
+  emailPass: string;
+  emailFrom: string;
+  emailTo: string;
+  emailSubject: string;
+  emailApiKey: string;
 }
 
 const defaultState: SettingsState = {
@@ -56,7 +62,13 @@ const defaultState: SettingsState = {
   username: '',
   password: '',
   emailEnabled: false,
-  toEmail: '',
+  emailService: 'gmail',
+  emailUser: '',
+  emailPass: '',
+  emailFrom: '',
+  emailTo: '',
+  emailSubject: 'SiteMonitor Notification',
+  emailApiKey: '',
 };
 
 const Settings: React.FC = () => {
@@ -64,13 +76,12 @@ const Settings: React.FC = () => {
   const [form, setForm] = useState<SettingsState>(defaultState);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState(false);
 
   const loadConfig = async () => {
     setLoading(true);
     try {
       const res = await axios.get('/api/config');
-      const { website = {}, schedule = defaultState.schedule } = res.data;
+      const { website = {}, schedule = defaultState.schedule, email = {} } = res.data;
       setForm({
         loginUrl: website.loginUrl || '',
         targetUrl: website.targetUrl || '',
@@ -80,8 +91,14 @@ const Settings: React.FC = () => {
         submitSelector: website.submitSelector || '',
         username: website.username || '',
         password: website.password || '',
-        emailEnabled: website.emailEnabled ?? false,
-        toEmail: website.toEmail || '',
+        emailEnabled: email.enabled ?? false,
+        emailService: email.service || 'gmail',
+        emailUser: email.auth?.user || '',
+        emailPass: email.auth?.pass || '',
+        emailFrom: email.from || '',
+        emailTo: email.to || '',
+        emailSubject: email.subject || 'SiteMonitor Notification',
+        emailApiKey: email.apiKey || '',
       });
     } catch (err) {
       console.error('Error loading config', err);
@@ -110,13 +127,22 @@ const Settings: React.FC = () => {
           submitSelector: form.submitSelector,
           username: form.username,
           password: form.password,
-          emailEnabled: form.emailEnabled,
-          toEmail: form.toEmail,
         },
         schedule: form.schedule,
+        email: {
+          enabled: form.emailEnabled,
+          service: form.emailService,
+          auth: {
+            user: form.emailUser,
+            pass: form.emailPass,
+          },
+          from: form.emailFrom,
+          to: form.emailTo,
+          subject: form.emailSubject,
+          apiKey: form.emailApiKey,
+        },
       });
       showNotification('Instellingen opgeslagen', 'success');
-      setSuccess(true);
     } catch (err) {
       console.error('Save failed', err);
       showNotification('Opslaan mislukt', 'error');
@@ -127,13 +153,15 @@ const Settings: React.FC = () => {
 
   const sendTestEmail = async () => {
     try {
-      await axios.post('/api/test-email', { to: form.toEmail }, {
-        headers: { 'x-api-key': process.env.REACT_APP_EMAIL_API_KEY || '' },
+      await axios.post('/api/test-email', { to: form.emailTo }, {
+        headers: { 'x-api-key': form.emailApiKey },
       });
       showNotification('Test e-mail verzonden', 'success');
-    } catch (err) {
+    } catch (error_) {
+      const err = error_ as any;
       console.error('Test email failed', err);
-      showNotification('Test e-mail mislukt', 'error');
+      const message = err.response?.data?.error || err.message || 'Test e-mail mislukt';
+      showNotification(`Fout bij test e-mail: ${message}`, 'error');
     }
   };
 
@@ -186,14 +214,43 @@ const Settings: React.FC = () => {
           <TextField label="Password" type="password" fullWidth value={form.password} onChange={e=>update('password',e.target.value)} />
         </Grid>
 
-        {/* Email */}
+        {/* Email Settings */}
+        <Grid item xs={12}>
+          <Typography variant="h6" gutterBottom>Email Settings</Typography>
+        </Grid>
         <Grid item xs={12} md={6}>
           <FormControlLabel control={<Switch checked={form.emailEnabled} onChange={e=>update('emailEnabled',e.target.checked)} />} label="Enable Email Notifications" />
         </Grid>
         {form.emailEnabled && (
-          <Grid item xs={12} md={6}>
-            <TextField label="To Email" fullWidth value={form.toEmail} onChange={e=>update('toEmail',e.target.value)} />
-          </Grid>
+          <>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Email Service</InputLabel>
+                <Select value={form.emailService} label="Email Service" onChange={e=>update('emailService',e.target.value)}>
+                  <MenuItem value="gmail">Gmail</MenuItem>
+                  <MenuItem value="smtp">SMTP</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField label="Email User" fullWidth value={form.emailUser} onChange={e=>update('emailUser',e.target.value)} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField label="Email Password" type="password" fullWidth value={form.emailPass} onChange={e=>update('emailPass',e.target.value)} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField label="From Email" fullWidth value={form.emailFrom} onChange={e=>update('emailFrom',e.target.value)} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField label="To Email" fullWidth value={form.emailTo} onChange={e=>update('emailTo',e.target.value)} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField label="Email Subject" fullWidth value={form.emailSubject} onChange={e=>update('emailSubject',e.target.value)} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField label="Email API Key" fullWidth value={form.emailApiKey} onChange={e=>update('emailApiKey', e.target.value)} />
+            </Grid>
+          </>
         )}
       </Grid>
 
@@ -202,10 +259,6 @@ const Settings: React.FC = () => {
         <Button variant="contained" startIcon={<SaveIcon />} onClick={save} disabled={saving}>Save</Button>
         {form.emailEnabled && <Button variant="contained" color="secondary" startIcon={<MailIcon />} onClick={sendTestEmail}>Send Test Email</Button>}
       </Stack>
-
-      <Snackbar open={success} autoHideDuration={3000} onClose={()=>setSuccess(false)}>
-        <Alert severity="success" onClose={()=>setSuccess(false)}>Saved!</Alert>
-      </Snackbar>
     </Box>
   );
 };

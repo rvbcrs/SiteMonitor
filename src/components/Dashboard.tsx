@@ -52,7 +52,15 @@ const Dashboard: React.FC = () => {
         imageUrl: listing.imageUrl,
         condition: listing.condition,
         category: listing.category,
-        attributes: listing.attributes
+        attributes: Array.isArray(listing.attributes)
+          ? listing.attributes
+          : (() => {
+              try {
+                return JSON.parse(listing.attributes || '[]');
+              } catch {
+                return [];
+              }
+            })()
       }));
 
       // Sort items by date (newest first)
@@ -149,95 +157,47 @@ const Dashboard: React.FC = () => {
           <Grid container spacing={2} sx={{ p: 2 }}>
             <AnimatePresence initial={false}>
               {items.map((item) => (
-                <Grid item xs={12} sm={6} md={4} key={item.id} component={motion.div}
+                <Grid item xs={12} key={item.id} component={motion.div}
                   layout
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 10 }}
                   transition={{ duration: 0.25 }}
                 >
-                  <Card
-                    sx={(theme) => ({
-                      height: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      bgcolor: highlightIds.has(item.id)
-                        ? alpha(theme.palette.success.light, 0.3)
-                        : 'background.paper',
-                    })}
-                    elevation={4}
-                  >
-                    {item.imageUrl && (
-                      <CardMedia
-                        component="img"
-                        height="180"
-                        image={getProxiedImageUrl(item.imageUrl)}
-                        alt={item.title}
-                      />
-                    )}
-                    <CardContent sx={{ flexGrow: 1 }}>
-                      <Typography gutterBottom variant="h6" component="div">
-                        {item.title}
+                  <Paper elevation={highlightIds.has(item.id) ? 4 : 1} sx={{ p: 2, display: 'flex', mb: 2 }}>
+                    <Box sx={{ width: 200, height: 150, flexShrink: 0, bgcolor: 'grey.100' }}>
+                      {item.imageUrl ? (
+                        <Box component="img" src={getProxiedImageUrl(item.imageUrl)} alt={item.title}
+                          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <Box sx={{ width: '100%', height: '100%', bgcolor: 'grey.200' }} />
+                      )}
+                    </Box>
+                    <Box sx={{ flexGrow: 1, pl: 2, display: 'flex', flexDirection: 'column' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>{item.title}</Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Button size="small" href={item.url}>Zie omschrijving</Button>
+                          <Typography component="a" href={item.url} sx={{ color: 'primary.main', textDecoration: 'none', fontWeight: 500 }}>
+                            {item.seller}
+                          </Typography>
+                        </Box>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ my: 1, flexGrow: 1 }}>
+                        {item.description}
                       </Typography>
-                      {item.price && (
-                        <Typography variant="h5" color="primary" gutterBottom>
-                          {item.price}
-                        </Typography>
-                      )}
-                      {item.description && (
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                          {item.description}
-                        </Typography>
-                      )}
-                      <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
-                        {item.condition && (
-                          <Chip
-                            label={item.condition}
-                            size="small"
-                            color="secondary"
-                            variant="outlined"
-                          />
-                        )}
-                        {item.category && (
-                          <Chip
-                            label={item.category}
-                            size="small"
-                            color="primary"
-                            variant="outlined"
-                          />
-                        )}
-                      </Stack>
-                      <Stack direction="row" spacing={2}>
-                        {item.seller && (
-                          <Typography variant="body2" color="text.secondary">
-                            Verkoper: {item.seller}
-                          </Typography>
-                        )}
-                        {item.location && (
-                          <Typography variant="body2" color="text.secondary">
-                            Locatie: {item.location}
-                          </Typography>
-                        )}
-                      </Stack>
-                      {item.date && (
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                          Geplaatst: {formatDate(item.date)}
-                        </Typography>
-                      )}
-                    </CardContent>
-                    <CardActions sx={{ p: 2 }}>
-                      <Button
-                        fullWidth
-                        variant="contained"
-                        color="primary"
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Bekijk advertentie
-                      </Button>
-                    </CardActions>
-                  </Card>
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-start', gap: 2, mb: 1 }}>
+                        <Typography variant="caption" color="text.secondary">{formatDate(item.date)}</Typography>
+                        <Typography variant="caption" color="text.secondary">{item.location}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {item.attributes.map((attr: string, i: number) => (
+                          <Chip key={i} label={attr} size="small" variant="outlined" />
+                        ))}
+                      </Box>
+                    </Box>
+                  </Paper>
                 </Grid>
               ))}
             </AnimatePresence>
