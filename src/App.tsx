@@ -19,6 +19,9 @@ const darkTheme = createTheme({
       paper: '#1e1e1e',
     },
   },
+  typography: {
+    fontFamily: '"Abel", sans-serif',
+  },
 });
 
 function App() {

@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Abel&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -10,9 +11,13 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 } */
-@import url("https://fonts.googleapis.com/css?family=Abel");
+/* @import url("https://fonts.googleapis.com/css?family=Abel"); */
+
+
+
 
 body {
+  color: #000;
   background-color: #94ddee;
   margin: 0;
   font-family: Abel, sans-serif;
@@ -32,11 +37,11 @@ code {
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-supabase-darker;
+  @apply bg-gray-200;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-supabase-darkAccent rounded-full;
+  @apply bg-gray-500 rounded-full;
 }
 
 ::-webkit-scrollbar-thumb:hover {

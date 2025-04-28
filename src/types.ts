@@ -1,13 +1,20 @@
 export interface Listing {
+  id: string;
   title: string;
   price: string;
-  description: string;
+  url: string;
+  imageUrl: string;
   location: string;
-  distance: string;
   date: string;
+  description: string;
   seller: string;
+  condition: string | null;
+  category: string | null;
   attributes: string[];
-  link: string;
+  selector: string;
+  timestamp: string;
+  isNew: boolean;
+  isUpdated: boolean;
 }
 
 export interface WebsiteConfig {
@@ -80,4 +87,14 @@ export interface NotificationSettings {
   enabled: boolean;
   email: string;
   frequency: "immediate" | "daily" | "weekly";
+}
+
+export interface WebSocketMessage {
+  type: "new_listing" | "updated_listing" | "error";
+  data: Listing | string;
+}
+
+export interface WebSocketError {
+  message: string;
+  code: string;
 }
