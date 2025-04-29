@@ -121,7 +121,13 @@ const Dashboard: React.FC = () => {
           : [],
       }));
 
-      setListings(normalized);
+      // Sort items by their parsed date (newest first, with 'Vandaag' at top)
+      const sorted = normalized.sort((a: Listing, b: Listing) => {
+        const dA = parseDutchDate(a.date);
+        const dB = parseDutchDate(b.date);
+        return dB.getTime() - dA.getTime();
+      });
+      setListings(sorted);
       setIsLoading(false);
       setError(null);
 
@@ -161,7 +167,13 @@ const Dashboard: React.FC = () => {
           : [],
       }));
 
-      setListings(normalized);
+      // Sort items by their parsed date before setting
+      const sorted = normalized.sort((a: Listing, b: Listing) => {
+        const dA = parseDutchDate(a.date);
+        const dB = parseDutchDate(b.date);
+        return dB.getTime() - dA.getTime();
+      });
+      setListings(sorted);
       setIsLoading(false);
       setError(null);
     } catch (err) {
@@ -220,7 +232,11 @@ const Dashboard: React.FC = () => {
     if (parts.length === 3) {
       const day = parseInt(parts[0], 10);
       const month = monthMap[parts[1].toLowerCase()];
-      const year = parseInt(parts[2], 10);
+      let year = parseInt(parts[2], 10);
+      // if two-digit year, assume 2000+year
+      if (!isNaN(year) && year < 100) {
+        year += 2000;
+      }
       return new Date(year, month, day);
     }
     return new Date(); // fallback
