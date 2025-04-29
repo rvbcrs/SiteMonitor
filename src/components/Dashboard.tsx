@@ -71,7 +71,11 @@ const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isManualRefresh, setIsManualRefresh] = useState(false);
-  const [secondsUntilNextCheck, setSecondsUntilNextCheck] = useState(300);
+  const [schedule, setSchedule] = useState<string>('');
+  const [intervalSec, setIntervalSec] = useState<number>(defaultIntervalSec);
+  const [secondsUntilNextCheck, setSecondsUntilNextCheck] = useState<number>(defaultIntervalSec);
+  const [nextServerCheck, setNextServerCheck] = useState<number | null>(null);
+  const [lastTimestamp, setLastTimestamp] = useState<Date | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -84,8 +88,13 @@ const Dashboard: React.FC = () => {
     });
 
     socket.on('connect', () => {
-      console.log('WebSocket connected');
+      console.log('WebSocket connected, id:', socket.id);
       setError(null);
+    });
+
+    // Log all incoming socket events for debugging
+    socket.onAny((event, ...args) => {
+      console.log('WS event received:', event, args);
     });
 
     socket.on('connect_error', (error) => {
@@ -101,8 +110,8 @@ const Dashboard: React.FC = () => {
       }
     });
 
-    socket.on('listingsUpdate', ({ listings }) => {
-      console.log('WS update:', listings.length);
+    socket.on('listingsUpdate', ({ listings, nextCheck }) => {
+      console.log('WS listingsUpdate:', listings.length, 'nextCheck:', nextCheck);
       const normalized = listings.map((l: Listing) => ({
         ...l,
         attributes: Array.isArray(l.attributes)
@@ -116,10 +125,15 @@ const Dashboard: React.FC = () => {
       setIsLoading(false);
       setError(null);
 
-      // Update countdown
-      const last = new Date(normalized[0]?.timestamp || Date.now());
-      const remaining = Math.max(0, Math.floor((last.getTime() + 5*60*1000 - Date.now())/1000));
-      setSecondsUntilNextCheck(remaining);
+      // Update countdown from server nextCheck timestamp
+      const remSec = Math.max(0, Math.floor((nextCheck - Date.now()) / 1000));
+      console.log('Calculated remaining sec from nextCheck:', remSec);
+      setSecondsUntilNextCheck(remSec);
+    });
+
+    socket.on('nextCheck', ({ nextCheck }) => {
+      console.log('WS nextCheck event received:', nextCheck);
+      setNextServerCheck(nextCheck);
     });
 
     socket.on('error', (error: WebSocketError) => {
@@ -150,10 +164,6 @@ const Dashboard: React.FC = () => {
       setListings(normalized);
       setIsLoading(false);
       setError(null);
-
-      const last = new Date(normalized[0]?.timestamp || Date.now());
-      const remaining = Math.max(0, Math.floor((last.getTime() + 5*60*1000 - Date.now())/1000));
-      setSecondsUntilNextCheck(remaining);
     } catch (err) {
       console.error('Error fetching listings:', err);
       setError('Fout bij ophalen van de gegevens');
@@ -165,26 +175,20 @@ const Dashboard: React.FC = () => {
     fetchItems();
   }, []);
 
+  // New countdown effect driven by nextServerCheck
   useEffect(() => {
-    if (!isManualRefresh) {
-      const timer = setInterval(() => {
-        setSecondsUntilNextCheck(prev => {
-          if (prev <= 1) {
-            fetchItems();
-            return 300;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      return () => clearInterval(timer);
-    }
-  }, [isManualRefresh]);
+    if (nextServerCheck === null) return;
+    const timer = setInterval(() => {
+      const rem = Math.max(0, Math.floor((nextServerCheck - Date.now()) / 1000));
+      setSecondsUntilNextCheck(rem);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [nextServerCheck]);
 
   const handleCheckNow = async () => {
     try {
       setIsManualRefresh(true);
-      setSecondsUntilNextCheck(300);
+      setSecondsUntilNextCheck(intervalSec);
       // Use full path for API calls
       const response = await fetch(`${API_URL}/api/check`, {
         method: 'POST',
@@ -242,7 +246,8 @@ const Dashboard: React.FC = () => {
 
   const getProxiedImageUrl = (imageUrl: string) => {
     if (!imageUrl) return '';
-    return `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+    // Use full API_URL to ensure correct host/port
+    return `${API_URL}/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
   };
 
   // helper to format seconds into HH:mm:ss
@@ -255,6 +260,29 @@ const Dashboard: React.FC = () => {
     const ss = seconds.toString().padStart(2, '0');
     return `${hh}:${mm}:${ss}`;
   };
+
+  // Helper to compute remaining based on interval and last timestamp
+  const computeRemaining = (secs: number, last: Date | null): number => {
+    if (!last) return secs;
+    return Math.max(0, Math.floor((last.getTime() + secs * 1000 - Date.now()) / 1000));
+  };
+
+  // Fetch schedule from API and set the dynamic interval
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/config`);
+        const data = await res.json();
+        setSchedule(data.schedule);
+        const secs = parseCronToSeconds(data.schedule);
+        setIntervalSec(secs);
+        setSecondsUntilNextCheck(prev => computeRemaining(secs, lastTimestamp));
+      } catch (err) {
+        console.error('Error loading config:', err);
+      }
+    };
+    loadConfig();
+  }, []);
 
   if (isLoading) {
     return (
@@ -280,7 +308,7 @@ const Dashboard: React.FC = () => {
           <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Typography variant="h6" component="h2">
-                Live Items Feed
+                Live Items Feed ({listings.length})
               </Typography>
               <Stack direction="row" spacing={2} alignItems="center">
                 {listings.length > 0 && (
