@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  sitemonitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sitemonitor
+    image: sitemonitor
+    command: node src/website-monitor.js
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - WEBSITE_MONITOR_URL=http://sitemonitor:3000
+      - API_URL=http://api:3001
+      - EMAIL_SERVICE_URL=http://email-service:3002
+      - DATA_DIR=/app/data
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: api
+    image: sitemonitor
+    command: node src/index.js
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - WEBSITE_MONITOR_URL=http://sitemonitor:3000
+      - EMAIL_SERVICE_URL=http://email-service:3002
+      - DATA_DIR=/app/data
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/app/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  email-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: email-service
+    image: sitemonitor
+    command: node src/email-service.js
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+      - WEBSITE_MONITOR_URL=http://sitemonitor:3000
+      - EMAIL_SERVICE_API_KEY=5a0808b961793d82d2d7a6e3c86b9ebdb8796df5f644b4890639a378881ca344
+    ports:
+      - "3002:3002"
+    volumes:
+      - ./data:/app/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  data:
+    driver: local

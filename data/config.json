@@ -1,0 +1,29 @@
+{
+  "website": {
+    "loginUrl": "https://www.marktplaats.nl/identity/v2/login",
+    "targetUrl": "https://www.marktplaats.nl/q/nintendo+switch/#searchInTitleAndDescription:true|Language:nl-NL|f:13940|asSavedSearch:true",
+    "selectors": [
+      "div.hz-Page-content"
+    ]
+  },
+  "credentials": {
+    "username": "ramonvanbruggen@gmail.com",
+    "password": "guxtop-gifqy5-dukCeh",
+    "usernameSelector": "#email",
+    "passwordSelector": "#password",
+    "submitSelector": "button.hz-Button.hz-Button--primary[type=\"button\"]"
+  },
+  "email": {
+    "enabled": true,
+    "service": "gmail",
+    "auth": {
+      "user": "ramonvanbruggen@gmail.com",
+      "pass": "dpsqicvcvwxgmtfe"
+    },
+    "from": "ramonvanbruggen@gmail.com",
+    "to": "ramonvanbruggen@gmail.com",
+    "subject": "Website wijziging gedetecteerd"
+  },
+  "dataDir": "/usr/src/app/data",
+  "schedule": "*/10 * * * *"
+}
