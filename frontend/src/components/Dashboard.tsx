@@ -73,7 +73,7 @@ const Dashboard: React.FC = () => {
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const [schedule, setSchedule] = useState<string>('');
   const [intervalSec, setIntervalSec] = useState<number>(defaultIntervalSec);
-  const [secondsUntilNextCheck, setSecondsUntilNextCheck] = useState<number>(defaultIntervalSec);
+  const [secondsUntilNextCheck, setSecondsUntilNextCheck] = useState<number | null>(null);
   const [nextServerCheck, setNextServerCheck] = useState<number | null>(null);
   const [lastTimestamp, setLastTimestamp] = useState<Date | null>(null);
   const navigate = useNavigate();
@@ -131,10 +131,11 @@ const Dashboard: React.FC = () => {
       setIsLoading(false);
       setError(null);
 
-      // Update countdown from server nextCheck timestamp
-      const remSec = Math.max(0, Math.floor((nextCheck - Date.now()) / 1000));
-      console.log('Calculated remaining sec from nextCheck:', remSec);
-      setSecondsUntilNextCheck(remSec);
+      // Only update the target server check time
+      if (nextCheck) {
+        console.log('[listingsUpdate] Updating nextServerCheck to:', nextCheck);
+        setNextServerCheck(nextCheck);
+      }
     });
 
     socket.on('nextCheck', ({ nextCheck }) => {
@@ -183,19 +184,32 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  // Fetch initial items on component mount
   useEffect(() => {
     fetchItems();
   }, []);
 
   // New countdown effect driven by nextServerCheck
   useEffect(() => {
-    if (nextServerCheck === null) return;
+    if (nextServerCheck === null) {
+      console.log('[Countdown Effect] nextServerCheck is null, timer not started.');
+      return; // Exit if we don't have the server timestamp yet
+    }
+ 
+    console.log(`[Countdown Effect] Starting timer. nextServerCheck: ${new Date(nextServerCheck).toISOString()}`);
+    // Immediately set remaining time without waiting 1s
+    setSecondsUntilNextCheck(Math.max(0, Math.floor((nextServerCheck - Date.now()) / 1000)));
     const timer = setInterval(() => {
       const rem = Math.max(0, Math.floor((nextServerCheck - Date.now()) / 1000));
       setSecondsUntilNextCheck(rem);
     }, 1000);
-    return () => clearInterval(timer);
-  }, [nextServerCheck]);
+
+    // Cleanup function
+    return () => {
+      console.log('[Countdown Effect] Cleaning up timer.');
+      clearInterval(timer);
+    };
+  }, [nextServerCheck]); // Dependency array is correct
 
   const handleCheckNow = async () => {
     try {
@@ -262,12 +276,14 @@ const Dashboard: React.FC = () => {
 
   const getProxiedImageUrl = (imageUrl: string) => {
     if (!imageUrl) return '';
+    console.log('[Dashboard.tsx] Using API_URL for proxy:', API_URL);
     // Use full API_URL to ensure correct host/port
     return `${API_URL}/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
   };
 
   // helper to format seconds into HH:mm:ss
-  const formatDuration = (totalSeconds: number): string => {
+  const formatDuration = (totalSeconds: number | null): string => {
+    if (totalSeconds === null) return '--:--:--'; // Show placeholder if null
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
@@ -292,7 +308,7 @@ const Dashboard: React.FC = () => {
         setSchedule(data.schedule);
         const secs = parseCronToSeconds(data.schedule);
         setIntervalSec(secs);
-        setSecondsUntilNextCheck(prev => computeRemaining(secs, lastTimestamp));
+        // Timer will be set by the first 'nextCheck' event from WebSocket
       } catch (err) {
         console.error('Error loading config:', err);
       }

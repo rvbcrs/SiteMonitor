@@ -78,6 +78,10 @@ const parseCronToMs = (cron) => {
         const latest = await Listing.findOne({ order: [['timestamp', 'DESC']] });
         const lastTs = latest ? new Date(latest.timestamp).getTime() : Date.now();
         nextCheckTs = lastTs + scheduleIntervalMs;
+        // Ensure nextCheckTs is in the future; if not, schedule from now
+        if (nextCheckTs <= Date.now()) {
+            nextCheckTs = Date.now() + scheduleIntervalMs;
+        }
         console.log('Initial nextCheckTs set to', new Date(nextCheckTs).toISOString());
     } catch (e) {
         console.error('Failed to load schedule interval:', e);
@@ -137,6 +141,10 @@ app.post('/api/config', async (req, res) => {
             const latest = await Listing.findOne({ order: [['timestamp', 'DESC']] });
             const lastTs = latest ? new Date(latest.timestamp).getTime() : Date.now();
             nextCheckTs = lastTs + scheduleIntervalMs;
+            // Ensure nextCheckTs is in the future; if not, schedule from now
+            if (nextCheckTs <= Date.now()) {
+                nextCheckTs = Date.now() + scheduleIntervalMs;
+            }
             emitNextCheck();
         }
 
@@ -181,6 +189,10 @@ const emitListingsUpdate = async () => {
         });
         const lastTs = listings.length > 0 ? new Date(listings[0].timestamp).getTime() : Date.now();
         nextCheckTs = lastTs + scheduleIntervalMs;
+        // Ensure nextCheckTs is in the future; if not, schedule from now
+        if (nextCheckTs <= Date.now()) {
+            nextCheckTs = Date.now() + scheduleIntervalMs;
+        }
         console.log(`DEBUG WS: emitting listingsUpdate with ${listings.length} items, nextCheckTs=${new Date(nextCheckTs).toISOString()}`);
         io.emit('listingsUpdate', { listings, nextCheck: nextCheckTs });
         // broadcast separate nextCheck event as well

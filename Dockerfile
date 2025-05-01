@@ -1,25 +1,24 @@
 ARG NODE_VERSION=18-bullseye
-ARG REACT_APP_API_URL_ARG=http://monitor.ramonvanbruggen.nl # Default fallback
 
 # Build stage for frontend
-FROM node:${NODE_VERSION} as frontend-builder
+FROM node:${NODE_VERSION}-slim as frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ .
-ARG REACT_APP_API_URL_ARG # Receive the build argument
-ENV REACT_APP_API_URL=$REACT_APP_API_URL_ARG
+ENV REACT_APP_API_URL=""
+ENV REACT_APP_WS_URL=""
 RUN npm run build
 
 # Build stage for backend
-FROM node:${NODE_VERSION} as backend-builder
+FROM node:${NODE_VERSION}-slim as backend-builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY src/ ./src/
 
-# Final stage
-FROM node:${NODE_VERSION}
+# Final stage - Use the slim variant
+FROM node:${NODE_VERSION}-slim
 WORKDIR /app
 
 # Install Chrome dependencies
