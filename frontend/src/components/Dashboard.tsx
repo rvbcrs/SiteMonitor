@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -15,6 +15,7 @@ import {
   CardActions,
   Button,
   Grid,
+  Backdrop,
 } from '@mui/material';
 import { ThemeProvider, createTheme, alpha } from '@mui/material/styles';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -76,7 +77,9 @@ const Dashboard: React.FC = () => {
   const [secondsUntilNextCheck, setSecondsUntilNextCheck] = useState<number | null>(null);
   const [nextServerCheck, setNextServerCheck] = useState<number | null>(null);
   const [lastTimestamp, setLastTimestamp] = useState<Date | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
   const navigate = useNavigate();
+  const checkingTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Initialize Socket.IO connection using explicit WS_URL
@@ -111,6 +114,8 @@ const Dashboard: React.FC = () => {
     });
 
     socket.on('listingsUpdate', ({ listings, nextCheck }) => {
+      setIsChecking(false);
+      setNextServerCheck(nextCheck);
       console.log('WS listingsUpdate:', listings.length, 'nextCheck:', nextCheck);
       const normalized = listings.map((l: Listing) => ({
         ...l,
@@ -130,22 +135,25 @@ const Dashboard: React.FC = () => {
       setListings(sorted);
       setIsLoading(false);
       setError(null);
-
-      // Only update the target server check time
-      if (nextCheck) {
-        console.log('[listingsUpdate] Updating nextServerCheck to:', nextCheck);
-        setNextServerCheck(nextCheck);
-      }
     });
 
     socket.on('nextCheck', ({ nextCheck }) => {
-      console.log('WS nextCheck event received:', nextCheck);
+      setIsChecking(false);
       setNextServerCheck(nextCheck);
+      console.log('WS nextCheck event received:', nextCheck);
     });
 
     socket.on('error', (error: WebSocketError) => {
       console.error('WebSocket error:', error);
       setError(`Fout: ${error.message}`);
+    });
+
+    socket.on('checking', () => {
+      // Prevent stale loader: clear existing timeout and start a new one
+      if (checkingTimeout.current) clearTimeout(checkingTimeout.current);
+      setIsChecking(true);
+      // Auto-hide spinner after 4 min in case something goes wrong
+      checkingTimeout.current = setTimeout(() => setIsChecking(false), 4 * 60 * 1000);
     });
 
     return () => { socket.disconnect(); };
@@ -211,23 +219,37 @@ const Dashboard: React.FC = () => {
     };
   }, [nextServerCheck]); // Dependency array is correct
 
-  const handleCheckNow = async () => {
+  const handleCheckNow = async (triggeredByScheduleChange = false) => {
+    if (isChecking) return; // Already running
     try {
-      setIsManualRefresh(true);
+      if (!triggeredByScheduleChange) {
+        setIsManualRefresh(true);
+      }
+      // Reset timer immediately based on CURRENT intervalSec
       setSecondsUntilNextCheck(intervalSec);
-      // Use full path for API calls
+
+      // Trigger check on backend
+      console.log(`Triggering check now (schedule change: ${triggeredByScheduleChange})...`);
       const response = await fetch(`${API_URL}/api/check`, {
         method: 'POST',
       });
       if (!response.ok) {
+        if (response.status === 429) {
+          setError('Er draait al een controle. Even geduld aub.');
+          return;
+        }
         throw new Error('Failed to trigger check');
       }
-      await fetchItems();
+      // Let the WebSocket handle the listings/nextCheck update after the check
+      // await fetchItems(); // No need to fetch here anymore
+
     } catch (error) {
       console.error('Error triggering check:', error);
       setError('Fout bij het uitvoeren van de check');
     } finally {
-      setIsManualRefresh(false);
+      if (!triggeredByScheduleChange) {
+        setIsManualRefresh(false);
+      }
     }
   };
 
@@ -299,22 +321,30 @@ const Dashboard: React.FC = () => {
     return Math.max(0, Math.floor((last.getTime() + secs * 1000 - Date.now()) / 1000));
   };
 
-  // Fetch schedule from API and set the dynamic interval
+  // Fetch schedule from API initially and on schedule change
   useEffect(() => {
     const loadConfig = async () => {
       try {
         const res = await fetch(`${API_URL}/api/config`);
         const data = await res.json();
-        setSchedule(data.schedule);
-        const secs = parseCronToSeconds(data.schedule);
-        setIntervalSec(secs);
-        // Timer will be set by the first 'nextCheck' event from WebSocket
+        const newSchedule = data.schedule;
+        if (newSchedule !== schedule) {
+          console.log('Fetched new schedule:', newSchedule);
+          setSchedule(newSchedule);
+          const secs = parseCronToSeconds(newSchedule);
+          setIntervalSec(secs);
+          // Trigger a check immediately since schedule changed
+          // (nextCheck will be updated via WebSocket after check completes)
+          handleCheckNow(true); // Pass flag to indicate schedule change trigger
+        }
       } catch (err) {
         console.error('Error loading config:', err);
       }
     };
     loadConfig();
-  }, []);
+    // Dependency array includes 'schedule' now, but initialized empty
+    // so it runs on mount and whenever schedule changes internally
+  }, [schedule]); // Rerun if schedule state changes
 
   if (isLoading) {
     return (
@@ -327,6 +357,9 @@ const Dashboard: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      <Backdrop sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.drawer + 1 }} open={isChecking}>
+        <CircularProgress color="inherit" />
+      </Backdrop>
       <Box
         sx={{
           bgcolor: 'background.default',
@@ -353,11 +386,13 @@ const Dashboard: React.FC = () => {
                   <Typography variant="caption" color="text.secondary">
                     Next check in: {formatDuration(secondsUntilNextCheck)}
                   </Typography>
+                  {isChecking && <CircularProgress size={16} sx={{ ml: 0.5 }} />}
                 </Stack>
                 <Button
                   variant="contained"
                   size="small"
-                  onClick={handleCheckNow}
+                  onClick={() => handleCheckNow(false)}
+                  disabled={isChecking}
                 >
                   Check Now
                 </Button>

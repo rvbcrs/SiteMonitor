@@ -187,12 +187,9 @@ const emitListingsUpdate = async () => {
         const listings = await Listing.findAll({
             order: [['timestamp', 'DESC']]
         });
-        const lastTs = listings.length > 0 ? new Date(listings[0].timestamp).getTime() : Date.now();
-        nextCheckTs = lastTs + scheduleIntervalMs;
-        // Ensure nextCheckTs is in the future; if not, schedule from now
-        if (nextCheckTs <= Date.now()) {
-            nextCheckTs = Date.now() + scheduleIntervalMs;
-        }
+        const now = Date.now();
+        nextCheckTs = now + scheduleIntervalMs;
+
         console.log(`DEBUG WS: emitting listingsUpdate with ${listings.length} items, nextCheckTs=${new Date(nextCheckTs).toISOString()}`);
         io.emit('listingsUpdate', { listings, nextCheck: nextCheckTs });
         // broadcast separate nextCheck event as well
@@ -202,15 +199,33 @@ const emitListingsUpdate = async () => {
     }
 };
 
+// Add helper to notify clients that a check is running
+const emitChecking = () => {
+    console.log('DEBUG WS: emitting checking event');
+    io.emit('checking');
+};
+
+// Guard to prevent overlapping checks
+let isCheckingRunning = false;
+
 // Modify the check endpoint to emit updates
 app.post('/api/check', async (req, res) => {
+    if (isCheckingRunning) {
+        return res.status(429).json({ error: 'Check already running' });
+    }
     try {
+        isCheckingRunning = true;
+        emitChecking(); // notify clients
+        // Immediately push nextCheckTs forward to avoid duplicate triggers
+        nextCheckTs = Date.now() + scheduleIntervalMs;
         const results = await checkWebsite();
         await emitListingsUpdate();
         res.json({ success: true, results });
     } catch (error) {
         console.error('Error triggering check:', error.message);
         res.status(500).json({ error: 'Failed to trigger check' });
+    } finally {
+        isCheckingRunning = false;
     }
 });
 
@@ -284,6 +299,32 @@ httpServer.listen(port, "0.0.0.0", () => {
     console.log(`Server running on port ${port}, listening on all interfaces`);
     console.log(`Using website-monitor service at ${process.env.WEBSITE_MONITOR_URL}`);
 });
+
+// -------------------------------------------------------------
+// Periodic scheduler that emits updates when a check is due
+// -------------------------------------------------------------
+// Every second we compare the current timestamp with the next scheduled
+// check moment. If we have passed (or reached) that moment we trigger
+// emitListingsUpdate() which will in turn recalculate a new nextCheckTs
+// and broadcast it (together with latest listings) to all connected
+// WebSocket clients.
+setInterval(async () => {
+    if (isCheckingRunning) return;
+    if (Date.now() >= nextCheckTs) {
+        isCheckingRunning = true;
+        // bump next check immediately to prevent re-entry until this run finishes
+        nextCheckTs = Date.now() + scheduleIntervalMs;
+        console.log(`[Scheduler] nextCheckTs reached, starting automated check...`);
+        emitChecking();
+        try {
+            await checkWebsite();
+        } catch (err) {
+            console.error('Scheduler automated check error:', err);
+        }
+        await emitListingsUpdate();
+        isCheckingRunning = false;
+    }
+}, 1000);
 
 const emitNextCheck = () => {
     console.log(`DEBUG WS: emitting nextCheck event with nextCheckTs=${new Date(nextCheckTs).toISOString()}`);

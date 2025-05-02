@@ -386,11 +386,17 @@ async function saveContent(selector, content) {
  */
 async function getPreviousHash(selector) {
     try {
-        const lastListing = await Listing.findOne({
+        const listings = await Listing.findAll({
             where: { selector },
             order: [['timestamp', 'DESC']]
         });
-        return lastListing ? generateHash(JSON.stringify(lastListing)) : null;
+
+        if (listings.length === 0) return null;
+
+        const stable = listings.map(l => ({ title: l.title, price: l.price, url: l.url }))
+            .sort((a, b) => a.url.localeCompare(b.url));
+
+        return generateHash(JSON.stringify(stable));
     } catch (error) {
         console.error('Error getting previous hash:', error);
         return null;
@@ -944,33 +950,41 @@ async function checkWebsite() {
 
         console.log(`Debug - Extracted ${content.items.length} items`);
 
-        // Generate hash and check for changes
-        const currentHash = generateHash(JSON.stringify(content.items));
+        // Generate hash based on stable fields (title, price, url) for all items
+        const stableCurrent = content.items.map(i => ({ title: i.title, price: i.price, url: i.url })).sort((a, b) => a.url.localeCompare(b.url));
+        const currentHash = generateHash(JSON.stringify(stableCurrent));
         const previousHash = await getPreviousHash(config.website.selectors[0]);
 
         // Determine which items are new (initial run counts all as new)
         let newItems = [];
-        if (!previousHash && content.items.length > 0) {
-            newItems = content.items;
-        } else if (currentHash !== previousHash) {
-            console.log('Debug - Content has changed, saving new content...');
+        if (previousHash === null || currentHash !== previousHash) {
+            console.log('Debug - Content is new or has changed, saving to database...');
+
+            // Fetch previous listings before we overwrite them
             const previousListings = await Listing.findAll({
                 where: { selector: config.website.selectors[0] },
                 order: [['timestamp', 'DESC']]
             });
+
             await saveContent(config.website.selectors[0], content);
-            const previousItems = previousListings.map(l => ({
-                title: l.title,
-                price: l.price,
-                image: l.imageUrl,
-                url: l.url
-            }));
-            newItems = content.items.filter(newItem =>
-                !previousItems.some(oldItem =>
-                    oldItem.title === newItem.title &&
-                    oldItem.price === newItem.price
-                )
-            );
+
+            if (previousHash === null) {
+                // First run -> everything is new
+                newItems = content.items;
+            } else {
+                const previousItems = previousListings.map(l => ({
+                    title: l.title,
+                    price: l.price,
+                    url: l.url
+                }));
+                newItems = content.items.filter(newItem =>
+                    !previousItems.some(oldItem =>
+                        oldItem.title === newItem.title &&
+                        oldItem.price === newItem.price &&
+                        oldItem.url === newItem.url
+                    )
+                );
+            }
         }
         // Send email only with new items if any
         if (newItems.length > 0) {
