@@ -192,8 +192,6 @@ const emitListingsUpdate = async () => {
 
         console.log(`DEBUG WS: emitting listingsUpdate with ${listings.length} items, nextCheckTs=${new Date(nextCheckTs).toISOString()}`);
         io.emit('listingsUpdate', { listings, nextCheck: nextCheckTs });
-        // broadcast separate nextCheck event as well
-        emitNextCheck();
     } catch (error) {
         console.error('Error emitting listings update:', error);
     }

@@ -20,7 +20,7 @@ import {
 import { ThemeProvider, createTheme, alpha } from '@mui/material/styles';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Listing, WebSocketError } from '../types';
-import { AccessTime, NewReleases } from '@mui/icons-material';
+import { AccessTime } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { format } from 'date-fns';
@@ -71,7 +71,6 @@ const Dashboard: React.FC = () => {
   const [listings, setListings] = useState<Listing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isManualRefresh, setIsManualRefresh] = useState(false);
   const [schedule, setSchedule] = useState<string>('');
   const [intervalSec, setIntervalSec] = useState<number>(defaultIntervalSec);
   const [secondsUntilNextCheck, setSecondsUntilNextCheck] = useState<number | null>(null);
@@ -226,9 +225,6 @@ const Dashboard: React.FC = () => {
   const handleCheckNow = async (triggeredByScheduleChange = false) => {
     if (isChecking) return; // Already running
     try {
-      if (!triggeredByScheduleChange) {
-        setIsManualRefresh(true);
-      }
       // Reset timer immediately based on CURRENT intervalSec
       setSecondsUntilNextCheck(intervalSec);
 
@@ -250,10 +246,6 @@ const Dashboard: React.FC = () => {
     } catch (error) {
       console.error('Error triggering check:', error);
       setError('Fout bij het uitvoeren van de check');
-    } finally {
-      if (!triggeredByScheduleChange) {
-        setIsManualRefresh(false);
-      }
     }
   };
 
@@ -317,12 +309,6 @@ const Dashboard: React.FC = () => {
     const mm = minutes.toString().padStart(2, '0');
     const ss = seconds.toString().padStart(2, '0');
     return `${hh}:${mm}:${ss}`;
-  };
-
-  // Helper to compute remaining based on interval and last timestamp
-  const computeRemaining = (secs: number, last: Date | null): number => {
-    if (!last) return secs;
-    return Math.max(0, Math.floor((last.getTime() + secs * 1000 - Date.now()) / 1000));
   };
 
   // Fetch schedule from API initially and on schedule change
