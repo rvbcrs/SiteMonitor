@@ -8,6 +8,7 @@ const { Listing, Config, initializeDatabase } = require('./database');
 const express = require('express');
 const cors = require('cors');
 const port = process.env.PORT || 3000;
+const fs = require('fs');
 
 // Initialize database
 initializeDatabase();
@@ -564,6 +565,13 @@ async function checkWebsite() {
         // Add delay to allow all listings to be fully loaded
         console.log('Debug - Waiting for listings to be fully loaded (5 seconds)...');
         await new Promise(resolve => setTimeout(resolve, 5000));
+
+        // Clean up old screenshots
+        const dataDir = path.join(__dirname, '../data');
+        fs.readdirSync(dataDir)
+            .filter(f => f.startsWith('screenshot-') && f.endsWith('.png'))
+            .forEach(f => fs.unlinkSync(path.join(dataDir, f)));
+        console.log('Debug - Old screenshots removed.');
 
         // Take screenshot of the page
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');

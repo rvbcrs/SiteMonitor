@@ -116,6 +116,8 @@ const Dashboard: React.FC = () => {
     socket.on('listingsUpdate', ({ listings, nextCheck }) => {
       setIsChecking(false);
       setNextServerCheck(nextCheck);
+      // Update last updated time on each listings update
+      setLastTimestamp(new Date());
       console.log('WS listingsUpdate:', listings.length, 'nextCheck:', nextCheck);
       const normalized = listings.map((l: Listing) => ({
         ...l,
@@ -183,6 +185,8 @@ const Dashboard: React.FC = () => {
         return dB.getTime() - dA.getTime();
       });
       setListings(sorted);
+      // Update last updated time after initial fetch
+      setLastTimestamp(new Date());
       setIsLoading(false);
       setError(null);
     } catch (err) {
@@ -376,9 +380,9 @@ const Dashboard: React.FC = () => {
                 Live Items Feed ({listings.length})
               </Typography>
               <Stack direction="row" spacing={2} alignItems="center">
-                {listings.length > 0 && (
+                {lastTimestamp && (
                   <Typography variant="caption" color="text.secondary">
-                    Last updated: {format(new Date(listings[0].timestamp), 'HH:mm:ss', { locale: nl })}
+                    Last updated: {format(lastTimestamp, 'HH:mm:ss', { locale: nl })}
                   </Typography>
                 )}
                 <Stack direction="row" spacing={1} alignItems="center">
