@@ -16,8 +16,11 @@ import {
   Button,
   Grid,
   Backdrop,
+  FormControl,
+  InputLabel
 } from '@mui/material';
-import { ThemeProvider, createTheme, alpha } from '@mui/material/styles';
+import { alpha } from '@mui/material/styles';
+import { useTheme } from '@mui/material/styles';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Listing, WebSocketError } from '../types';
 import { AccessTime } from '@mui/icons-material';
@@ -29,21 +32,6 @@ import { API_URL, WS_URL } from '../config';
 
 // default interval before config loads (in seconds)
 const defaultIntervalSec = 30;
-
-const theme = createTheme({
-  palette: {
-    mode: 'light',
-    background: {
-      default: '#b7e0ef'
-    },
-    text: {
-      primary: '#000'
-    }
-  },
-  typography: {
-    fontFamily: '"Abel", sans-serif',
-  },
-});
 
 // parseCronToSeconds supports minute and hour intervals
 const parseCronToSeconds = (cron: string): number => {
@@ -68,6 +56,7 @@ const parseCronToSeconds = (cron: string): number => {
 };
 
 const Dashboard: React.FC = () => {
+  const theme = useTheme();
   const [listings, setListings] = useState<Listing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -345,14 +334,12 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <>
       <Backdrop sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.drawer + 1 }} open={isChecking}>
         <CircularProgress color="inherit" />
       </Backdrop>
       <Box
         sx={{
-          bgcolor: 'background.default',
           minHeight: '100vh',
           py: 6,
           display: 'flex',
@@ -407,49 +394,74 @@ const Dashboard: React.FC = () => {
                   transition={{ duration: 0.25 }}
                 >
                   <Card elevation={3} sx={{ display: 'flex', mb: 4, borderRadius: 2, overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-                    {/* Left (red) side */}
-                    <Box sx={{ width: 220, px: 3, py: 4, bgcolor: '#c96b60', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                       <Chip label={item.seller || item.title.split(' ')[0]} sx={{ bgcolor: '#b45b52', color: '#fff', mb: 3, fontWeight: 600, fontSize: 14 }} />
+                    {/* Left side */}
+                    <Box sx={{ width: 220, px: 3, py: 4, bgcolor: 'primary.main',
+                        color: 'primary.contrastText',
+                         display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                       <Chip
+                         label={item.seller || item.title.split(' ')[0]}
+                         sx={{
+                            // Gebruik een donkerdere, semi-transparante tint van primary voor achtergrond
+                            bgcolor: alpha(theme.palette.common.black, 0.2), // Semi-transparant zwart/donkergrijs
+                            color: '#fff', // Expliciet wit
+                            mb: 3,
+                            fontWeight: 600,
+                            fontSize: 14
+                         }}
+                       />
                        {item.imageUrl ? (
                            <Avatar src={getProxiedImageUrl(item.imageUrl)} alt={item.title} sx={{ width: 120, height: 120, mb: 3 }} />
                        ) : (
-                           <Avatar sx={{ width: 120, height: 120, mb: 3, bgcolor: 'grey.200' }}>
+                           <Avatar sx={{ width: 120, height: 120, mb: 3,
+                               bgcolor: 'background.paper',
+                               color: 'text.secondary'
+                            }}>
                                {item.title.charAt(0)}
                            </Avatar>
                        )}
-                       <Chip label={item.price} sx={{ bgcolor: '#b45b52', color: '#fff', fontWeight: 600, fontSize: 14 }} />
+                       <Chip
+                         label={item.price}
+                         sx={{
+                           // Gebruik een donkerdere, semi-transparante tint van primary voor achtergrond
+                           bgcolor: alpha(theme.palette.common.black, 0.2), // Semi-transparant zwart/donkergrijs
+                           color: '#fff', // Expliciet wit
+                           fontWeight: 600,
+                           fontSize: 14
+                         }}
+                        />
                     </Box>
-                    {/* Right (white) side */}
-                    <Box sx={{ flex: 1, backgroundColor: '#fff', p: 3, display: 'flex', flexDirection: 'column' }}>
+                    {/* Right side */}
+                    <Box sx={{ flex: 1, backgroundColor: 'background.paper', p: 3, display: 'flex', flexDirection: 'column' }}>
                        <CardContent sx={{ flex: '1 0 auto', pb: 0 }}>
-                           <Typography variant="h5" component="div" sx={{ fontWeight: 700, color: '#000', mb: 2 }}>{item.title}</Typography>
-                           <Typography variant="body1" sx={{ color: '#000', mb: 2 }}>
+                           <Typography variant="h5" component="div" sx={{ fontWeight: 700, color: 'text.primary', mb: 2 }}>{item.title}</Typography>
+                           <Typography variant="body1" sx={{ color: 'text.secondary', mb: 2 }}>
                                {item.description}
                            </Typography>
                        </CardContent>
-                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
-                           <Button
-                             variant="contained"
-                             size="small"
-                             href={item.url}
-                             target="_blank"
-                             rel="noopener noreferrer"
-                             sx={{ textTransform: 'none' }}
-                           >
-                             Zie omschrijving
-                           </Button>
-                           <Typography variant="caption" sx={{ color: '#000' }}>
-                               {formatDate(item.date)}
-                           </Typography>
-                           <Typography variant="caption" sx={{ color: '#000' }}>
-                               {item.location}
-                           </Typography>
-                       </Box>
-                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2 }}>
-                           {Array.isArray(item.attributes) && item.attributes.map((attr: string, i: number) => (
-                               <Chip key={i} label={attr} size="small" variant="outlined" sx={{ fontSize: 12, color: '#000', borderColor: '#ccc' }} />
-                           ))}
-                       </Box>
+                       <CardActions sx={{ pt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                              {item.url && (
+                                  <Button size="small" href={item.url} target="_blank" rel="noopener noreferrer">
+                                      Zie omschrijving
+                                  </Button>
+                              )}
+                          </Stack>
+                          <Stack direction="row" spacing={1} alignItems="center" sx={{ color: 'text.disabled' }}>
+                             <AccessTime fontSize="inherit" />
+                             <Typography variant="caption">{item.date || 'N/A'}</Typography>
+                             <Typography variant="caption">•</Typography>
+                             <Typography variant="caption">{item.location || 'N/A'}</Typography>
+                          </Stack>
+                       </CardActions>
+                       {item.attributes && item.attributes.length > 0 && (
+                         <Box sx={{ px: 3, pb: 2, pt: 1 }}>
+                            <Stack direction="row" spacing={1} flexWrap="wrap">
+                                {item.attributes.map((attr, index) => (
+                                    <Chip key={index} label={attr} size="small" variant="outlined" />
+                                ))}
+                            </Stack>
+                         </Box>
+                       )}
                     </Box>
                   </Card>
                 </Grid>
@@ -458,7 +470,7 @@ const Dashboard: React.FC = () => {
           </Grid>
         </Box>
       </Box>
-    </ThemeProvider>
+    </>
   );
 };
 

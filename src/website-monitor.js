@@ -1087,38 +1087,39 @@ app.get('/api/config', async (req, res) => {
 // Update configuration
 app.post('/api/config', async (req, res) => {
     try {
-        console.log('\nDebug - Updating configuration...');
-        const { website, schedule, email } = req.body;
-        console.log('New configuration:', { website, schedule, email });
+        const { website, schedule, email, theme } = req.body;
 
         if (website) {
-            config.website = { ...config.website, ...website };
+            await Config.upsert({ key: 'website', value: JSON.stringify(website) });
+            config.website = website;
+            console.log('Debug - Updated website config');
         }
-
         if (schedule) {
+            await Config.upsert({ key: 'schedule', value: JSON.stringify(schedule) });
             config.schedule = schedule;
+            console.log('Debug - Updated schedule config');
+            // Restart cron job with new schedule
+            stopMonitoring();
             startMonitoring();
         }
-
         if (email) {
-            config.email = { ...config.email, ...email };
+            await Config.upsert({ key: 'email', value: JSON.stringify(email) });
+            config.email = email;
+            console.log('Debug - Updated email config');
+        }
+        // Voeg logica toe om thema op te slaan
+        if (theme) {
+            await Config.upsert({ key: 'theme', value: JSON.stringify(theme) });
+            // We hoeven het thema waarschijnlijk niet in het in-memory 'config' object op te slaan,
+            // tenzij de backend het thema ergens direct gebruikt.
+            // De frontend zal het thema ophalen via GET /api/config.
+            console.log('Debug - Updated theme config');
         }
 
-        // Save configurations
-        await Config.upsert({ key: 'website', value: JSON.stringify(config.website) });
-
-        if (schedule) {
-            await Config.upsert({ key: 'schedule', value: JSON.stringify(config.schedule) });
-        }
-        if (email) {
-            await Config.upsert({ key: 'email', value: JSON.stringify(config.email) });
-        }
-
-        console.log('Configuration updated successfully');
-        res.json({ success: true });
+        res.json({ success: true, message: 'Configuration updated successfully' });
     } catch (error) {
-        console.error('Error updating configuration:', error);
-        res.status(500).json({ error: 'Error updating configuration', details: error.message });
+        console.error('Error updating config:', error);
+        res.status(500).json({ error: 'Failed to update config' });
     }
 });
 
