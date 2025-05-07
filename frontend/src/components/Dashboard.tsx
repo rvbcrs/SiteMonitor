@@ -348,11 +348,20 @@ const Dashboard: React.FC = () => {
       >
         <Box sx={{ width: '100%', maxWidth: 1200, mx: 2 }}>
           <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography variant="h6" component="h2">
+            <Stack 
+              direction={{ xs: 'column', sm: 'row' }} // Responsive direction
+              spacing={{ xs: 1, sm: 2 }} // Responsive spacing
+              justifyContent="space-between" 
+              alignItems={{ xs: 'flex-start', sm: 'center' }} // Responsive alignment
+            >
+              <Typography variant="h6" component="h2" sx={{ mb: { xs: 1, sm: 0 } }}> {/* Margin bottom on mobile */}
                 Live Items Feed ({listings.length})
               </Typography>
-              <Stack direction="row" spacing={2} alignItems="center">
+              <Stack 
+                direction={{ xs: 'column', md: 'row' }} // Laatste groep kan ook stacken op mobiel/tablet
+                spacing={2} 
+                alignItems={{ xs: 'flex-start', md: 'center' }} // Align start op mobiel
+              >
                 {lastTimestamp && (
                   <Typography variant="caption" color="text.secondary">
                     Last updated: {format(lastTimestamp, 'HH:mm:ss', { locale: nl })}
@@ -370,6 +379,7 @@ const Dashboard: React.FC = () => {
                   size="small"
                   onClick={() => handleCheckNow(false)}
                   disabled={isChecking}
+                  sx={{ width: { xs: '100%', md: 'auto'} }} // Full width op xs
                 >
                   Check Now
                 </Button>
@@ -393,26 +403,49 @@ const Dashboard: React.FC = () => {
                   exit={{ opacity: 0, y: 10 }}
                   transition={{ duration: 0.25 }}
                 >
-                  <Card elevation={3} sx={{ display: 'flex', mb: 4, borderRadius: 2, overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                  <Card 
+                    elevation={3} 
+                    sx={{
+                      display: 'flex',
+                      flexDirection: { xs: 'column', md: 'row' }, // Responsive direction
+                      mb: 4, 
+                      borderRadius: 2, 
+                      overflow: 'hidden', 
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                    }}
+                  >
                     {/* Left side */}
-                    <Box sx={{ width: 220, px: 3, py: 4, bgcolor: 'primary.main',
-                        color: 'primary.contrastText',
-                         display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <Box 
+                      sx={{
+                        width: { xs: '100%', md: 220 }, // Responsive width
+                        px: 3, py: 4, 
+                        bgcolor: 'primary.main', 
+                        color: 'primary.contrastText', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        alignItems: 'center' 
+                      }}
+                    >
                        <Chip
                          label={item.seller || item.title.split(' ')[0]}
                          sx={{
-                            // Gebruik een donkerdere, semi-transparante tint van primary voor achtergrond
-                            bgcolor: alpha(theme.palette.common.black, 0.2), // Semi-transparant zwart/donkergrijs
-                            color: '#fff', // Expliciet wit
-                            mb: 3,
+                            bgcolor: alpha(theme.palette.common.black, 0.2),
+                            color: '#fff',
+                            mb: { xs: 2, md: 3 }, // Aangepaste margin voor mobiel
                             fontWeight: 600,
                             fontSize: 14
                          }}
                        />
                        {item.imageUrl ? (
-                           <Avatar src={getProxiedImageUrl(item.imageUrl)} alt={item.title} sx={{ width: 120, height: 120, mb: 3 }} />
+                           <Avatar 
+                             src={getProxiedImageUrl(item.imageUrl)} 
+                             alt={item.title} 
+                             sx={{ width: { xs: 100, md: 120 }, height: { xs: 100, md: 120 }, mb: { xs: 2, md: 3 } }} // Responsive avatar
+                           />
                        ) : (
-                           <Avatar sx={{ width: 120, height: 120, mb: 3,
+                           <Avatar 
+                             sx={{ 
+                               width: { xs: 100, md: 120 }, height: { xs: 100, md: 120 }, mb: { xs: 2, md: 3 }, // Responsive avatar
                                bgcolor: 'background.paper',
                                color: 'text.secondary'
                             }}>
@@ -422,31 +455,46 @@ const Dashboard: React.FC = () => {
                        <Chip
                          label={item.price}
                          sx={{
-                           // Gebruik een donkerdere, semi-transparante tint van primary voor achtergrond
-                           bgcolor: alpha(theme.palette.common.black, 0.2), // Semi-transparant zwart/donkergrijs
-                           color: '#fff', // Expliciet wit
+                           bgcolor: alpha(theme.palette.common.black, 0.2),
+                           color: '#fff',
                            fontWeight: 600,
                            fontSize: 14
                          }}
                         />
                     </Box>
                     {/* Right side */}
-                    <Box sx={{ flex: 1, backgroundColor: 'background.paper', p: 3, display: 'flex', flexDirection: 'column' }}>
+                    <Box sx={{ flex: 1, backgroundColor: 'background.paper', p: { xs: 2, md: 3 }, display: 'flex', flexDirection: 'column' }}> {/* Responsive padding */}
                        <CardContent sx={{ flex: '1 0 auto', pb: 0 }}>
-                           <Typography variant="h5" component="div" sx={{ fontWeight: 700, color: 'text.primary', mb: 2 }}>{item.title}</Typography>
-                           <Typography variant="body1" sx={{ color: 'text.secondary', mb: 2 }}>
+                           <Typography variant="h5" component="div" sx={{ fontWeight: 700, color: 'text.primary', mb: 2, fontSize: { xs: '1.25rem', md: '1.5rem' } }}> {/* Responsive font size */}
+                               {item.title}
+                           </Typography>
+                           <Typography variant="body1" sx={{ color: 'text.secondary', mb: 2, fontSize: { xs: '0.875rem', md: '1rem' } }}> {/* Responsive font size */}
                                {item.description}
                            </Typography>
                        </CardContent>
-                       <CardActions sx={{ pt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Stack direction="row" spacing={1} alignItems="center">
+                       <CardActions 
+                         sx={{ 
+                           pt: 1, 
+                           display: 'flex', 
+                           flexDirection: { xs: 'column', sm: 'row' }, 
+                           justifyContent: 'space-between', 
+                           alignItems: { xs: 'stretch', sm: 'center' } 
+                         }}
+                       >
+                          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: { xs: 1, sm: 0 }, width: { xs: '100%', sm: 'auto'} }}>
                               {item.url && (
-                                  <Button size="small" href={item.url} target="_blank" rel="noopener noreferrer">
+                                  <Button 
+                                    size="small" 
+                                    href={item.url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    sx={{ width: { xs: '100%', sm: 'auto' } }} 
+                                  >
                                       Zie omschrijving
                                   </Button>
                               )}
                           </Stack>
-                          <Stack direction="row" spacing={1} alignItems="center" sx={{ color: 'text.disabled' }}>
+                          <Stack direction="row" spacing={1} alignItems="center" sx={{ color: 'text.disabled', fontSize: { xs: '0.75rem', sm: 'caption.fontSize' } }}> {/* Smaller text on mobile */}
                              <AccessTime fontSize="inherit" />
                              <Typography variant="caption">{item.date || 'N/A'}</Typography>
                              <Typography variant="caption">•</Typography>
@@ -454,8 +502,8 @@ const Dashboard: React.FC = () => {
                           </Stack>
                        </CardActions>
                        {item.attributes && item.attributes.length > 0 && (
-                         <Box sx={{ px: 3, pb: 2, pt: 1 }}>
-                            <Stack direction="row" spacing={1} flexWrap="wrap">
+                         <Box sx={{ px: { xs: 2, md: 3 }, pb: { xs: 2, md: 2 }, pt: 1 }}> {/* Responsive padding */}
+                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap> {/* useFlexGap for better spacing with wrap */}
                                 {item.attributes.map((attr, index) => (
                                     <Chip key={index} label={attr} size="small" variant="outlined" />
                                 ))}

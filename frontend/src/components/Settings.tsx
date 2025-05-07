@@ -313,9 +313,34 @@ const Settings: React.FC = () => {
           </Card>
         </Grid>
       </Grid>
-      <Stack direction="row" spacing={2} sx={{ mt: 3, borderTop: 1, borderColor: 'divider', pt: 3 }}>
-        <Button variant="outlined" startIcon={<RefreshIcon />} onClick={loadConfig} disabled={saving || savingTheme}>Reload Config</Button>
-        <Button variant="contained" startIcon={<SaveIcon />} onClick={saveOtherSettings} disabled={saving || savingTheme}>Save Settings</Button>
+      <Stack 
+        direction={{ xs: 'column', sm: 'row' }} 
+        spacing={2} 
+        sx={{ 
+          mt: 3, 
+          borderTop: 1, 
+          borderColor: 'divider', 
+          pt: 3 
+        }}
+      >
+        <Button 
+          variant="outlined" 
+          startIcon={<RefreshIcon />} 
+          onClick={loadConfig} 
+          disabled={saving || savingTheme}
+          sx={{ width: { xs: '100%', sm: 'auto' } }}
+        >
+          Reload Config
+        </Button>
+        <Button 
+          variant="contained" 
+          startIcon={<SaveIcon />} 
+          onClick={saveOtherSettings} 
+          disabled={saving || savingTheme}
+          sx={{ width: { xs: '100%', sm: 'auto' } }}
+        >
+          Save Settings
+        </Button>
       </Stack>
     </Box>
   );
