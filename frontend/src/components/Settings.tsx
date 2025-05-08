@@ -18,13 +18,18 @@ import {
   FormControlLabel,
   Snackbar,
   Alert,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  IconButton,
+  ListItemSecondaryAction,
 } from '@mui/material';
 import { Save as SaveIcon, Refresh as RefreshIcon, Mail as MailIcon } from '@mui/icons-material';
 import axios from 'axios';
 import { useNotification } from '../contexts/NotificationContext';
 import { useThemeContext } from '../contexts/ThemeContext';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { Chip } from '@mui/material';
 
 const INTERVALS = [
   { label: '24 uur', value: '0 0 * * *' },
@@ -36,10 +41,17 @@ const INTERVALS = [
   { label: '5 minuten', value: '*/5 * * * *' },
 ];
 
+interface SiteConfig {
+  targetUrl: string;
+  isActive: boolean;
+  name?: string;
+  contentSelector?: string;
+}
+
 interface SettingsState {
   loginUrl: string;
-  targetUrls: string[];
   newTargetUrl: string;
+  websites: SiteConfig[];
   schedule: string;
   usernameSelector: string;
   passwordSelector: string;
@@ -60,8 +72,8 @@ interface SettingsState {
 
 const defaultState: SettingsState = {
   loginUrl: '',
-  targetUrls: [],
   newTargetUrl: '',
+  websites: [],
   schedule: '*/10 * * * *',
   usernameSelector: '',
   passwordSelector: '',
@@ -96,8 +108,15 @@ const Settings: React.FC = () => {
       const { website = {}, websites = [], schedule = defaultState.schedule, email = {}, theme = initialTheme } = res.data;
       const loadedForm = {
         loginUrl: website.loginUrl || '',
-        targetUrls: websites.length>0 ? websites.map((w:any)=>w.targetUrl || '') : (website.targetUrl? [website.targetUrl]:[]),
         newTargetUrl: '',
+        websites: websites.length > 0 
+          ? websites.map((w:any) => ({ 
+              targetUrl: w.targetUrl || '', 
+              isActive: w.isActive === undefined ? true : w.isActive,
+              name: w.name || '',
+              contentSelector: w.contentSelector || ''
+            })) 
+          : (website.targetUrl ? [{ targetUrl: website.targetUrl, isActive: true, name:'', contentSelector:'' }] : []),
         schedule,
         usernameSelector: website.usernameSelector || '',
         passwordSelector: website.passwordSelector || '',
@@ -155,20 +174,19 @@ const Settings: React.FC = () => {
     }
   };
 
-  const saveOtherSettings = async () => {
+  const saveOtherSettings = async (updatedWebsites?: SiteConfig[]) => {
     setSaving(true);
     try {
-      await axios.post('/api/config', {
+      const payload = {
         website: {
           loginUrl: form.loginUrl,
-          targetUrls: form.targetUrls,
           usernameSelector: form.usernameSelector,
           passwordSelector: form.passwordSelector,
           submitSelector: form.submitSelector,
           username: form.username,
           password: form.password,
         },
-        websites: form.targetUrls.map(t=>({targetUrl:t})),
+        websites: updatedWebsites || form.websites,
         schedule: form.schedule,
         email: {
           enabled: form.emailEnabled,
@@ -182,7 +200,8 @@ const Settings: React.FC = () => {
           subject: form.emailSubject,
           apiKey: form.emailApiKey,
         },
-      });
+      };
+      await axios.post('/api/config', payload);
       showNotification('Instellingen opgeslagen', 'success');
     } catch (err) {
       console.error('Save failed', err);
@@ -208,16 +227,26 @@ const Settings: React.FC = () => {
 
   const addTargetUrl = () => {
     const url = form.newTargetUrl.trim();
-    if (!url || form.targetUrls.includes(url)) return;
+    if (!url || form.websites.some(w => w.targetUrl === url)) return;
     setForm(prev => ({
       ...prev,
-      targetUrls: [...prev.targetUrls, url],
+      websites: [...prev.websites, { targetUrl: url, isActive: true }],
       newTargetUrl: ''
     }));
   };
 
   const removeTargetUrl = (url: string) => {
-    setForm(prev => ({ ...prev, targetUrls: prev.targetUrls.filter(u => u !== url) }));
+    setForm(prev => ({ ...prev, websites: prev.websites.filter(w => w.targetUrl !== url) }));
+  };
+
+  const toggleUrlActive = (url: string) => {
+    setForm(prev => {
+      const newWebsites = prev.websites.map(w => 
+        w.targetUrl === url ? { ...w, isActive: !w.isActive } : w
+      );
+      saveOtherSettings(newWebsites); 
+      return { ...prev, websites: newWebsites };
+    });
   };
 
   if (loading) {
@@ -247,11 +276,29 @@ const Settings: React.FC = () => {
                   <Button variant="outlined" onClick={addTargetUrl} sx={{ width:{xs:'100%', md:'auto'} }}>Add Target</Button>
                 </Grid>
                 <Grid item xs={12}>
-                  <Stack direction="row" spacing={1} flexWrap="wrap">
-                    {form.targetUrls.map(url => (
-                      <Chip key={url} label={url} onDelete={() => removeTargetUrl(url)} deleteIcon={<DeleteIcon />} />
+                  <List dense>
+                    {form.websites.map(site => (
+                      <ListItem key={site.targetUrl} sx={{ borderBottom: '1px solid rgba(0,0,0,0.05)', py:0.5 }}>
+                        <ListItemText 
+                          primary={site.targetUrl} 
+                          sx={{ 
+                            textDecoration: site.isActive ? 'none' : 'line-through', 
+                            color: site.isActive ? 'inherit' : 'text.disabled' 
+                          }}
+                        />
+                        <ListItemSecondaryAction>
+                          <Switch 
+                            edge="end" 
+                            checked={site.isActive} 
+                            onChange={() => toggleUrlActive(site.targetUrl)} 
+                          />
+                          <IconButton edge="end" aria-label="delete" onClick={() => removeTargetUrl(site.targetUrl)} sx={{ ml:1 }}>
+                            <DeleteIcon />
+                          </IconButton>
+                        </ListItemSecondaryAction>
+                      </ListItem>
                     ))}
-                  </Stack>
+                  </List>
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <FormControl fullWidth>
@@ -371,7 +418,7 @@ const Settings: React.FC = () => {
         <Button 
           variant="contained" 
           startIcon={<SaveIcon />} 
-          onClick={saveOtherSettings} 
+          onClick={() => saveOtherSettings()} 
           disabled={saving || savingTheme}
           sx={{ width: { xs: '100%', sm: 'auto' } }}
         >

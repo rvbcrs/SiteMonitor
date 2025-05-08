@@ -1197,9 +1197,14 @@ async function checkAllWebsites() {
     // Ensure latest settings
     await loadConfig();
 
-    // Als er een websites array is, iterate
-    if (config.websites && Array.isArray(config.websites) && config.websites.length > 0) {
-        for (const siteCfg of config.websites) {
+    // Filter alleen actieve websites (of websites zonder isActive property, voor backwards compatibility)
+    const activeWebsites = config.websites
+        ? config.websites.filter(site => site.isActive === undefined || site.isActive === true)
+        : [];
+
+    if (activeWebsites.length > 0) {
+        console.log(`Debug - Checking ${activeWebsites.length} active websites out of ${config.websites?.length || 0} configured.`);
+        for (const siteCfg of activeWebsites) {
             console.log(`\nDebug - Starting check for site: ${siteCfg.name || siteCfg.targetUrl}`);
             // Bewaar originelen om te herstellen
             const previousWebsite = { ...config.website };

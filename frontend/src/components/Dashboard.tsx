@@ -70,11 +70,16 @@ const Dashboard: React.FC = () => {
   const [lastTimestamp, setLastTimestamp] = useState<Date | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [tabIndex, setTabIndex] = useState(0);
+  const [activeSiteUrls, setActiveSiteUrls] = useState<string[]>([]);
   const navigate = useNavigate();
   const checkingTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  // Compute sorted keys for stable tab order
-  const groupKeys = useMemo(() => Object.keys(groups).sort(), [groups]);
+  // Compute sorted keys for stable tab order, filtered by active sites from config
+  const groupKeys = useMemo(() => {
+    return Object.keys(groups)
+      .filter(key => activeSiteUrls.includes(key)) // Alleen actieve sites tonen
+      .sort();
+  }, [groups, activeSiteUrls]);
 
   // Reset tabIndex when keys change and current index out-of-range
   useEffect(() => {
@@ -361,6 +366,12 @@ const Dashboard: React.FC = () => {
         const res = await fetch(`${API_URL}/api/config`);
         const data = await res.json();
         const newSchedule = data.schedule;
+
+        // Update actieve sites voor tab filtering
+        if (data.websites && Array.isArray(data.websites)) {
+          setActiveSiteUrls(data.websites.filter((site: any) => site.isActive === undefined || site.isActive === true).map((site: any) => site.targetUrl));
+        }
+
         if (newSchedule !== schedule) {
           console.log('Fetched new schedule:', newSchedule);
           setSchedule(newSchedule);
