@@ -445,7 +445,7 @@ async function sendEmailNotification(content, selector) {
 
     // Build email HTML matching dashboard card layout
     const emailHtml = `
-      <div style="font-family: 'Abel', sans-serif; max-width: 800px; margin: 0 auto;">
+      <div style="font-family: Arial, Helvetica, sans-serif; max-width: 800px; margin: 0 auto;">
         <h1 style="color: #333;">Nieuwe items gevonden</h1>
         <p style="color: #666;">De volgende nieuwe items werden gevonden op ${config.website.targetUrl}:</p>
         <div style="margin-top: 20px;">
@@ -474,13 +474,13 @@ async function sendEmailNotification(content, selector) {
               <div style="flex: 1; background: #fff; padding: 16px; display: flex; flex-direction: column;">
                 <h3 style="margin: 0 0 8px; font-size: 1.25rem; color: #000;">${item.title}</h3>
                 <p style="margin: 0 0 12px; font-size: 1rem; color: #333;">${item.description}</p>
-                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 12px;">
                   ${item.url ? `<a href="${item.url}" style="padding: 6px 12px; background: #1976d2; color: #fff; text-decoration: none; border-radius: 4px; font-size: 0.875rem;">Zie omschrijving</a>` : ''}
                   <span style="font-size: 0.75rem; color: #888;">${new Date(item.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                   <span style="font-size: 0.75rem; color: #888;">${item.location}</span>
                 </div>
                 <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                  ${item.attributes.map(attr => `<span style="border: 1px solid #ccc; border-radius: 4px; padding: 2px 6px; font-size: 0.75rem; color: #555;">${attr}</span>`).join('')}
+                  ${item.attributes.map(attr => `<span style="background-color: #f0f0f0; border-radius: 4px; padding: 3px 7px; font-size: 0.75rem; color: #444; margin-right: 4px; margin-bottom: 4px; display: inline-block;">${attr}</span>`).join('')}
                 </div>
               </div>
             </div>

@@ -97,18 +97,11 @@ const Dashboard: React.FC = () => {
     return raw.replace(/\+/g, ' ');
   };
 
-  // Extract primary token for filtering (first search word)
-  const getPrimaryToken = (url: string) => {
-    const label = getTabLabel(url);
-    // Neem eerste deel vóór spatie of +
-    return label.split(/[+\s]/)[0].toLowerCase();
-  };
+
 
   const getFilteredItems = (key: string) => {
-    const token = getPrimaryToken(key);
     const items = groups[key] || [];
-    if (!token) return items;
-    return items.filter((itm) => itm.title?.toLowerCase().includes(token));
+    return items;
   };
 
   useEffect(() => {
@@ -489,7 +482,7 @@ const Dashboard: React.FC = () => {
                       sx={{
                         display: 'flex',
                         flexDirection: { xs: 'column', md: 'row' }, // Responsive direction
-                        mb: 4, 
+                        mb: 1, 
                         borderRadius: 2, 
                         overflow: 'hidden', 
                         boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
@@ -549,37 +542,56 @@ const Dashboard: React.FC = () => {
                                <Typography variant="h5" component="div" sx={{ fontWeight: 700, color: 'text.primary', mb: 2, fontSize: { xs: '1.25rem', md: '1.5rem' } }}> {/* Responsive font size */}
                                    {item.title}
                                </Typography>
-                               <Typography variant="body1" sx={{ color: 'text.secondary', mb: 2, fontSize: { xs: '0.875rem', md: '1rem' } }}> {/* Responsive font size */}
+                               <Typography 
+                                 variant="body1" 
+                                 sx={{
+                                   color: 'text.secondary', 
+                                   mb: 2, 
+                                   fontSize: { xs: '0.875rem', md: '1rem' },
+                                   whiteSpace: 'normal', // Ensure text wraps
+                                   overflowWrap: 'break-word', // Break long words if necessary
+                                 }}
+                               > 
                                    {item.description}
                                </Typography>
                            </CardContent>
-                           <CardActions 
-                             sx={{ 
-                               pt: 1, 
-                               display: 'flex', 
-                               flexDirection: { xs: 'column', sm: 'row' }, 
-                               justifyContent: 'space-between', 
-                               alignItems: { xs: 'stretch', sm: 'center' } 
+                           <CardActions
+                             sx={{
+                               pt: 1,
+                               display: 'flex',
+                               flexDirection: { xs: 'column', sm: 'row' },
+                               justifyContent: 'flex-start',
+                               alignItems: { xs: 'stretch', sm: 'center' }
                              }}
                            >
                               <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: { xs: 1, sm: 0 }, width: { xs: '100%', sm: 'auto'} }}>
                                   {item.url && (
-                                      <Button 
-                                        size="small" 
-                                        href={item.url} 
-                                        target="_blank" 
+                                      <Button
+                                        variant="contained"
+                                        size="small"
+                                        href={item.url}
+                                        target="_blank"
                                         rel="noopener noreferrer"
-                                        sx={{ width: { xs: '100%', sm: 'auto' } }} 
+                                        sx={{ width: { xs: '100%', sm: 'auto' } }}
                                       >
                                           Zie omschrijving
                                       </Button>
                                   )}
                               </Stack>
-                              <Stack direction="row" spacing={1} alignItems="center" sx={{ color: 'text.disabled', fontSize: { xs: '0.75rem', sm: 'caption.fontSize' } }}> {/* Smaller text on mobile */}
-                                 <AccessTime fontSize="inherit" />
-                                 <Typography variant="caption">{item.date || 'N/A'}</Typography>
-                                 <Typography variant="caption">•</Typography>
-                                 <Typography variant="caption">{item.location || 'N/A'}</Typography>
+                              <Stack 
+                                direction="row" 
+                                spacing={1} 
+                                alignItems="center" 
+                                sx={{ 
+                                  color: 'text.disabled', 
+                                  fontSize: { xs: '0.75rem', sm: 'caption.fontSize' }, 
+                                  marginLeft: { xs: 0, sm: 2 }
+                                }}
+                              >
+                                <AccessTime fontSize="inherit" />
+                                <Typography variant="caption">{item.date || 'N/A'}</Typography>
+                                <Typography variant="caption">•</Typography>
+                                <Typography variant="caption">{item.location || 'N/A'}</Typography>
                               </Stack>
                            </CardActions>
                            {item.attributes && item.attributes.length > 0 && (
