@@ -6,7 +6,7 @@ const axios = require('axios');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 require('dotenv').config();
-const { Listing, Config } = require('./database');
+const { Listing, Config, initializeDatabase } = require('./database');
 const { checkWebsite } = require('./website-monitor');
 
 const app = express();
@@ -67,6 +67,7 @@ const parseCronToMs = (cron) => {
 // Load interval from DB at startup
 (async () => {
     try {
+        await initializeDatabase();
         const scheduleConfig = await Config.findOne({ where: { key: 'schedule' } });
         if (scheduleConfig) {
             let cronStr = scheduleConfig.value;
@@ -104,11 +105,13 @@ app.get('/api/items', async (req, res) => {
 app.get('/api/config', async (req, res) => {
     try {
         const websiteConfig = await Config.findOne({ where: { key: 'website' } });
+        const websitesConfig = await Config.findOne({ where: { key: 'websites' } });
         const scheduleConfig = await Config.findOne({ where: { key: 'schedule' } });
         const emailConfig = await Config.findOne({ where: { key: 'email' } });
 
         const config = {
             website: websiteConfig ? JSON.parse(websiteConfig.value) : {},
+            websites: websitesConfig ? JSON.parse(websitesConfig.value) : [],
             schedule: scheduleConfig ? JSON.parse(scheduleConfig.value) : null,
             email: emailConfig ? JSON.parse(emailConfig.value) : {}
         };
@@ -122,13 +125,31 @@ app.get('/api/config', async (req, res) => {
 
 app.post('/api/config', async (req, res) => {
     try {
-        const { website, schedule, email } = req.body;
+        const { website, websites, schedule, email } = req.body;
 
         if (website) {
             await Config.upsert({
                 key: 'website',
                 value: JSON.stringify(website)
             });
+
+            // Fallback: als er (nog) geen websites-array meegestuurd is, maar wel targetUrls
+            if (!websites && Array.isArray(website.targetUrls)) {
+                const derivedWebsites = website.targetUrls.map((t) => ({ targetUrl: t }));
+                await Config.upsert({
+                    key: 'websites',
+                    value: JSON.stringify(derivedWebsites)
+                });
+                console.log('Config POST - Derived websites array saved (from website.targetUrls)');
+            }
+        }
+
+        if (websites) {
+            await Config.upsert({
+                key: 'websites',
+                value: JSON.stringify(websites)
+            });
+            console.log('Config POST - Websites array saved:', websites.map(w => w.targetUrl));
         }
 
         if (schedule) {

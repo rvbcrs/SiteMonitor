@@ -21,6 +21,7 @@ let loginInProgress = false;
 const LOGIN_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
 const BROWSER_RESTART_TIMEOUT = 12 * 60 * 60 * 1000; // 12 hours
 let lastBrowserStart = null;
+let currentSiteKey = null; // identifies current website while looping
 
 // Middleware
 const app = express();
@@ -35,6 +36,8 @@ async function loadConfig() {
             const value = JSON.parse(item.value);
             if (item.key === 'website') {
                 config.website = { ...config.website, ...value };
+            } else if (item.key === 'websites') {
+                config.websites = value;
             } else if (item.key === 'schedule') {
                 config.schedule = value;
             } else if (item.key === 'email') {
@@ -81,6 +84,12 @@ async function loadConfig() {
             await Config.upsert({ key: 'email', value: JSON.stringify(defaultEmail) });
             config.email = { ...config.email, ...defaultEmail };
             console.log('Debug - Seeded email config with default values');
+
+            // Voeg default websites-array toe gebaseerd op defaultWebsite
+            const defaultWebsites = [defaultWebsite];
+            await Config.upsert({ key: 'websites', value: JSON.stringify(defaultWebsites) });
+            config.websites = defaultWebsites;
+            console.log('Debug - Seeded websites config with default values');
         } else {
             // If we have some configs but not all, seed the missing ones
             if (!config.website || !config.website.loginUrl) {
@@ -106,6 +115,13 @@ async function loadConfig() {
             }
 
             // Email config remains as stored in the database, no automatic seeding to prevent overrides
+
+            // Als websites nog niet aanwezig is maar wel 1 website, maak array van website
+            if (!config.websites || config.websites.length === 0) {
+                if (config.website && config.website.targetUrl) {
+                    config.websites = [config.website];
+                }
+            }
         }
     } catch (error) {
         console.error('Error loading configuration:', error);
@@ -172,7 +188,19 @@ async function initializeBrowser() {
         lastBrowserStart = now;
     }
 
-    // Check if we need to login
+    // ----------------------------------------------
+    //  Skip login when site does NOT require login
+    // ----------------------------------------------
+    const needsLogin = (config.website.username && config.website.password && config.website.username.trim() !== '' && config.website.password.trim() !== '');
+
+    if (!needsLogin) {
+        // Mark session as logged-in so downstream logic slaat login over
+        isLoggedIn = true;
+        console.log('Debug - Login not required for this site, skipping login step');
+        return;
+    }
+
+    // Check if we need to login (only if login is relevant)
     if (!isLoggedIn || !lastLoginTime || (now - lastLoginTime) > LOGIN_TIMEOUT) {
         if (loginInProgress) {
             console.log('Debug - Login already in progress, waiting...');
@@ -478,7 +506,7 @@ async function sendEmailNotification(content, selector) {
         console.error(`Error sending email for selector ${selector}:`, error);
     }
 }
-/* test */
+
 /**
  * Controleer de website op wijzigingen
  */
@@ -487,6 +515,7 @@ async function checkWebsite() {
 
     // Ensure we have the latest settings from the database
     await loadConfig();
+    const siteKey = currentSiteKey || config.website.targetUrl || (config.website.selectors && config.website.selectors[0]) || 'default';
 
     try {
         await initializeBrowser();
@@ -961,7 +990,7 @@ async function checkWebsite() {
         // Generate hash based on stable fields (title, price, url) for all items
         const stableCurrent = content.items.map(i => ({ title: i.title, price: i.price, url: i.url })).sort((a, b) => a.url.localeCompare(b.url));
         const currentHash = generateHash(JSON.stringify(stableCurrent));
-        const previousHash = await getPreviousHash(config.website.selectors[0]);
+        const previousHash = await getPreviousHash(siteKey);
 
         // Determine which items are new (initial run counts all as new)
         let newItems = [];
@@ -970,11 +999,11 @@ async function checkWebsite() {
 
             // Fetch previous listings before we overwrite them
             const previousListings = await Listing.findAll({
-                where: { selector: config.website.selectors[0] },
+                where: { selector: siteKey },
                 order: [['timestamp', 'DESC']]
             });
 
-            await saveContent(config.website.selectors[0], content);
+            await saveContent(siteKey, content);
 
             if (previousHash === null) {
                 // First run -> everything is new
@@ -997,7 +1026,7 @@ async function checkWebsite() {
         // Send email only with new items if any
         if (newItems.length > 0) {
             console.log('Debug - Sending email notification for new items:', newItems.length);
-            await sendEmailNotification({ items: newItems }, config.website.selectors[0]);
+            await sendEmailNotification({ items: newItems }, siteKey);
         }
 
         await page.close();
@@ -1009,6 +1038,8 @@ async function checkWebsite() {
             lastLoginTime = null;
         }
         throw error;
+    } finally {
+        currentSiteKey = null;
     }
 }
 
@@ -1032,13 +1063,13 @@ function startMonitoring() {
         global.cronJob.stop();
     }
 
-    // Voer direct een controle uit bij het starten
-    checkWebsite();
+    // Immediate check for all websites
+    checkAllWebsites();
 
     // Planning instellen voor herhaalde controles
     global.cronJob = cron.schedule(config.schedule, () => {
         console.log(`Uitvoeren van geplande controle op ${new Date().toISOString()}`);
-        checkWebsite();
+        checkAllWebsites();
     });
 }
 
@@ -1051,11 +1082,18 @@ app.get('/api/health', (req, res) => {
 app.get('/api/items', async (req, res) => {
     try {
         console.log('\nDebug - Fetching listings from database...');
-        const listings = await Listing.findAll({
-            order: [['timestamp', 'DESC']]
-        });
+        const listings = await Listing.findAll({ order: [['timestamp', 'DESC']] });
         console.log(`Retrieved ${listings.length} listings from database`);
-        res.json({ listings });
+
+        // Group by selector
+        const grouped = listings.reduce((acc, l) => {
+            const key = l.selector || 'default';
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(l);
+            return acc;
+        }, {});
+
+        res.json({ grouped });
     } catch (error) {
         console.error('Error fetching listings:', error);
         res.status(500).json({ error: 'Error fetching listings', details: error.message });
@@ -1067,11 +1105,13 @@ app.get('/api/config', async (req, res) => {
     try {
         console.log('\nDebug - Fetching configuration...');
         const websiteConfig = await Config.findOne({ where: { key: 'website' } });
+        const websitesConfig = await Config.findOne({ where: { key: 'websites' } });
         const scheduleConfig = await Config.findOne({ where: { key: 'schedule' } });
         const emailConfig = await Config.findOne({ where: { key: 'email' } });
 
         const configResponse = {
             website: websiteConfig ? JSON.parse(websiteConfig.value) : {},
+            websites: websitesConfig ? JSON.parse(websitesConfig.value) : [],
             schedule: scheduleConfig ? JSON.parse(scheduleConfig.value) : null,
             email: emailConfig ? JSON.parse(emailConfig.value) : {}
         };
@@ -1087,18 +1127,22 @@ app.get('/api/config', async (req, res) => {
 // Update configuration
 app.post('/api/config', async (req, res) => {
     try {
-        const { website, schedule, email, theme } = req.body;
+        const { website, websites, schedule, email, theme } = req.body;
 
         if (website) {
             await Config.upsert({ key: 'website', value: JSON.stringify(website) });
             config.website = website;
             console.log('Debug - Updated website config');
         }
+        if (websites) {
+            await Config.upsert({ key: 'websites', value: JSON.stringify(websites) });
+            config.websites = websites;
+            console.log('Debug - Updated websites config');
+        }
         if (schedule) {
             await Config.upsert({ key: 'schedule', value: JSON.stringify(schedule) });
             config.schedule = schedule;
             console.log('Debug - Updated schedule config');
-            // Restart cron job with new schedule
             stopMonitoring();
             startMonitoring();
         }
@@ -1107,12 +1151,8 @@ app.post('/api/config', async (req, res) => {
             config.email = email;
             console.log('Debug - Updated email config');
         }
-        // Voeg logica toe om thema op te slaan
         if (theme) {
             await Config.upsert({ key: 'theme', value: JSON.stringify(theme) });
-            // We hoeven het thema waarschijnlijk niet in het in-memory 'config' object op te slaan,
-            // tenzij de backend het thema ergens direct gebruikt.
-            // De frontend zal het thema ophalen via GET /api/config.
             console.log('Debug - Updated theme config');
         }
 
@@ -1127,7 +1167,7 @@ app.post('/api/config', async (req, res) => {
 app.post('/api/check', async (req, res) => {
     try {
         console.log('\nDebug - Manual website check triggered');
-        const results = await checkWebsite();
+        const results = await checkAllWebsites();
         console.log('Debug - Website check completed:', results);
         res.json({ success: true, results });
     } catch (error) {
@@ -1148,4 +1188,60 @@ if (require.main === module) {
     app.listen(port, () => {
         console.log(`Website monitor service running on port ${port}`);
     });
+}
+
+// ===============================
+//   NEW: checkAllWebsites wrapper
+// ===============================
+async function checkAllWebsites() {
+    // Ensure latest settings
+    await loadConfig();
+
+    // Als er een websites array is, iterate
+    if (config.websites && Array.isArray(config.websites) && config.websites.length > 0) {
+        for (const siteCfg of config.websites) {
+            console.log(`\nDebug - Starting check for site: ${siteCfg.name || siteCfg.targetUrl}`);
+            // Bewaar originelen om te herstellen
+            const previousWebsite = { ...config.website };
+            const previousSelectors = previousWebsite.selectors;
+
+            // Override config.website tijdelijk
+            config.website = { ...siteCfg };
+            currentSiteKey = siteCfg.targetUrl;
+            // Zorg dat selectors property array is
+            if (!config.website.selectors) {
+                config.website.selectors = siteCfg.selectors || previousSelectors;
+            }
+            if (!Array.isArray(config.website.selectors)) {
+                config.website.selectors = [config.website.selectors];
+            }
+
+            try {
+                await checkWebsite();
+            } catch (err) {
+                console.error('Error during website check for site', siteCfg.targetUrl, err);
+            }
+
+            // Herstel originele website-config zodat globale staat in orde blijft
+            config.website = previousWebsite;
+            currentSiteKey = null;
+        }
+    } else {
+        // Fallback: enkele website
+        await checkWebsite();
+    }
+}
+
+// Voeg een stopMonitoring functie toe zodat de API /api/config route de huidige cronjob netjes kan stoppen
+function stopMonitoring() {
+    if (global.cronJob) {
+        console.log('Stopping current monitoring cron job');
+        try {
+            global.cronJob.stop();
+        } catch (err) {
+            console.error('Error while stopping cron job', err);
+        } finally {
+            global.cronJob = null;
+        }
+    }
 }

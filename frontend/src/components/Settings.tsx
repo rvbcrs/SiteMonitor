@@ -23,6 +23,8 @@ import { Save as SaveIcon, Refresh as RefreshIcon, Mail as MailIcon } from '@mui
 import axios from 'axios';
 import { useNotification } from '../contexts/NotificationContext';
 import { useThemeContext } from '../contexts/ThemeContext';
+import DeleteIcon from '@mui/icons-material/Delete';
+import { Chip } from '@mui/material';
 
 const INTERVALS = [
   { label: '24 uur', value: '0 0 * * *' },
@@ -36,7 +38,8 @@ const INTERVALS = [
 
 interface SettingsState {
   loginUrl: string;
-  targetUrl: string;
+  targetUrls: string[];
+  newTargetUrl: string;
   schedule: string;
   usernameSelector: string;
   passwordSelector: string;
@@ -52,11 +55,13 @@ interface SettingsState {
   emailSubject: string;
   emailApiKey: string;
   theme: string;
+  websitesJson: string;
 }
 
 const defaultState: SettingsState = {
   loginUrl: '',
-  targetUrl: '',
+  targetUrls: [],
+  newTargetUrl: '',
   schedule: '*/10 * * * *',
   usernameSelector: '',
   passwordSelector: '',
@@ -72,6 +77,7 @@ const defaultState: SettingsState = {
   emailSubject: 'SiteMonitor Notification',
   emailApiKey: '',
   theme: 'light',
+  websitesJson: '',
 };
 
 const Settings: React.FC = () => {
@@ -87,10 +93,11 @@ const Settings: React.FC = () => {
     try {
       const res = await axios.get('/api/config');
       const initialTheme = themeName || defaultState.theme;
-      const { website = {}, schedule = defaultState.schedule, email = {}, theme = initialTheme } = res.data;
+      const { website = {}, websites = [], schedule = defaultState.schedule, email = {}, theme = initialTheme } = res.data;
       const loadedForm = {
         loginUrl: website.loginUrl || '',
-        targetUrl: website.targetUrl || '',
+        targetUrls: websites.length>0 ? websites.map((w:any)=>w.targetUrl || '') : (website.targetUrl? [website.targetUrl]:[]),
+        newTargetUrl: '',
         schedule,
         usernameSelector: website.usernameSelector || '',
         passwordSelector: website.passwordSelector || '',
@@ -106,6 +113,7 @@ const Settings: React.FC = () => {
         emailSubject: email.subject || 'SiteMonitor Notification',
         emailApiKey: email.apiKey || '',
         theme: theme || initialTheme,
+        websitesJson: '',
       };
       setForm(loadedForm);
       if (theme !== themeName) {
@@ -153,13 +161,14 @@ const Settings: React.FC = () => {
       await axios.post('/api/config', {
         website: {
           loginUrl: form.loginUrl,
-          targetUrl: form.targetUrl,
+          targetUrls: form.targetUrls,
           usernameSelector: form.usernameSelector,
           passwordSelector: form.passwordSelector,
           submitSelector: form.submitSelector,
           username: form.username,
           password: form.password,
         },
+        websites: form.targetUrls.map(t=>({targetUrl:t})),
         schedule: form.schedule,
         email: {
           enabled: form.emailEnabled,
@@ -197,6 +206,20 @@ const Settings: React.FC = () => {
     }
   };
 
+  const addTargetUrl = () => {
+    const url = form.newTargetUrl.trim();
+    if (!url || form.targetUrls.includes(url)) return;
+    setForm(prev => ({
+      ...prev,
+      targetUrls: [...prev.targetUrls, url],
+      newTargetUrl: ''
+    }));
+  };
+
+  const removeTargetUrl = (url: string) => {
+    setForm(prev => ({ ...prev, targetUrls: prev.targetUrls.filter(u => u !== url) }));
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
@@ -217,8 +240,18 @@ const Settings: React.FC = () => {
                 <Grid item xs={12} md={6}>
                   <TextField label="Login URL" fullWidth value={form.loginUrl} onChange={e => update('loginUrl', e.target.value)} required />
                 </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField label="Target URL" fullWidth value={form.targetUrl} onChange={e => update('targetUrl', e.target.value)} required />
+                <Grid item xs={12} md={8}>
+                  <TextField label="Target URL" fullWidth value={form.newTargetUrl} onChange={e => update('newTargetUrl', e.target.value)} placeholder="https://example.com/..." />
+                </Grid>
+                <Grid item xs={12} md={4} sx={{ display:'flex', alignItems:'center'}}>
+                  <Button variant="outlined" onClick={addTargetUrl} sx={{ width:{xs:'100%', md:'auto'} }}>Add Target</Button>
+                </Grid>
+                <Grid item xs={12}>
+                  <Stack direction="row" spacing={1} flexWrap="wrap">
+                    {form.targetUrls.map(url => (
+                      <Chip key={url} label={url} onDelete={() => removeTargetUrl(url)} deleteIcon={<DeleteIcon />} />
+                    ))}
+                  </Stack>
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <FormControl fullWidth>
@@ -237,6 +270,9 @@ const Settings: React.FC = () => {
                       <MenuItem value="orange">Orange</MenuItem>
                     </Select>
                   </FormControl>
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField label="Websites JSON" multiline minRows={6} fullWidth value={form.websitesJson} onChange={e=>update('websitesJson', e.target.value)} helperText="Array van website-configuraties (zie README)" />
                 </Grid>
               </Grid>
             </CardContent>

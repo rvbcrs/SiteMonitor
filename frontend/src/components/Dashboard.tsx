@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -17,7 +17,9 @@ import {
   Grid,
   Backdrop,
   FormControl,
-  InputLabel
+  InputLabel,
+  Tabs,
+  Tab
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { useTheme } from '@mui/material/styles';
@@ -34,7 +36,8 @@ import { API_URL, WS_URL } from '../config';
 const defaultIntervalSec = 30;
 
 // parseCronToSeconds supports minute and hour intervals
-const parseCronToSeconds = (cron: string): number => {
+const parseCronToSeconds = (cron: string | null | undefined): number => {
+  if (!cron || typeof cron !== 'string') return defaultIntervalSec;
   const parts = cron.trim().split(/\s+/);
   if (parts.length !== 5) return defaultIntervalSec;
   const [minute, hour] = parts;
@@ -57,7 +60,7 @@ const parseCronToSeconds = (cron: string): number => {
 
 const Dashboard: React.FC = () => {
   const theme = useTheme();
-  const [listings, setListings] = useState<Listing[]>([]);
+  const [groups, setGroups] = useState<{ [key: string]: Listing[] }>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [schedule, setSchedule] = useState<string>('');
@@ -66,11 +69,45 @@ const Dashboard: React.FC = () => {
   const [nextServerCheck, setNextServerCheck] = useState<number | null>(null);
   const [lastTimestamp, setLastTimestamp] = useState<Date | null>(null);
   const [isChecking, setIsChecking] = useState(false);
+  const [tabIndex, setTabIndex] = useState(0);
   const navigate = useNavigate();
   const checkingTimeout = useRef<NodeJS.Timeout | null>(null);
 
+  // Compute sorted keys for stable tab order
+  const groupKeys = useMemo(() => Object.keys(groups).sort(), [groups]);
+
+  // Reset tabIndex when keys change and current index out-of-range
   useEffect(() => {
-    // Initialize Socket.IO connection using explicit WS_URL
+    if (tabIndex >= groupKeys.length) {
+      setTabIndex(0);
+    }
+  }, [groupKeys, tabIndex]);
+
+  // Helper to derive a short label from Marktplaats URLs
+  const getTabLabel = (url: string) => {
+    const match = url.match(/\/q\/([^/]+)\//);
+    let raw = match && match[1] ? match[1] : url;
+    try { raw = decodeURIComponent(raw); } catch (_) {}
+    // Vervang plustekens door spaties voor leesbaarheid
+    return raw.replace(/\+/g, ' ');
+  };
+
+  // Extract primary token for filtering (first search word)
+  const getPrimaryToken = (url: string) => {
+    const label = getTabLabel(url);
+    // Neem eerste deel vóór spatie of +
+    return label.split(/[+\s]/)[0].toLowerCase();
+  };
+
+  const getFilteredItems = (key: string) => {
+    const token = getPrimaryToken(key);
+    const items = groups[key] || [];
+    if (!token) return items;
+    return items.filter((itm) => itm.title?.toLowerCase().includes(token));
+  };
+
+  useEffect(() => {
+    // Initialize Socket.io connection using explicit WS_URL
     const socket = io(WS_URL, {
       transports: ['websocket'],
       reconnection: true,
@@ -116,13 +153,23 @@ const Dashboard: React.FC = () => {
           : [],
       }));
 
-      // Sort items by their parsed date (newest first, with 'Vandaag' at top)
-      const sorted = normalized.sort((a: Listing, b: Listing) => {
-        const dA = parseDutchDate(a.date);
-        const dB = parseDutchDate(b.date);
-        return dB.getTime() - dA.getTime();
+      // Groepeer per selector (of 'default')
+      const groupedResult: { [key: string]: Listing[] } = {};
+      normalized.forEach((l: Listing) => {
+        const key = (l as any).selector || 'default';
+        if (!groupedResult[key]) groupedResult[key] = [];
+        groupedResult[key].push(l);
       });
-      setListings(sorted);
+
+      // Filter out groep-sleutels die geen geldige URL lijken te zijn (bv. CSS-selectoren)
+      const filteredResult: { [key: string]: Listing[] } = {};
+      Object.entries(groupedResult).forEach(([k, v]) => {
+        if (/^https?:\/\//i.test(k)) {
+          filteredResult[k] = v;
+        }
+      });
+
+      setGroups(filteredResult);
       setIsLoading(false);
       setError(null);
     });
@@ -156,23 +203,30 @@ const Dashboard: React.FC = () => {
       if (!response.ok) {
         throw new Error('Failed to fetch listings');
       }
-      const { listings: fetched } = await response.json();
-      const normalized = fetched.map((l: Listing) => ({
-        ...l,
-        attributes: Array.isArray(l.attributes)
-          ? l.attributes
-          : typeof l.attributes === 'string'
-          ? JSON.parse(l.attributes)
-          : [],
-      }));
-
-      // Sort items by their parsed date before setting
-      const sorted = normalized.sort((a: Listing, b: Listing) => {
-        const dA = parseDutchDate(a.date);
-        const dB = parseDutchDate(b.date);
-        return dB.getTime() - dA.getTime();
+      const resp = await response.json();
+      const grouped = resp.grouped && typeof resp.grouped === 'object' ? resp.grouped : {};
+      const newGroups: { [key: string]: Listing[] } = {};
+      Object.entries(grouped).forEach(([key, arr]: any) => {
+        const norm = (arr as Listing[]).map((l: Listing) => ({
+          ...l,
+          attributes: Array.isArray(l.attributes)
+            ? l.attributes
+            : typeof l.attributes === 'string'
+            ? JSON.parse(l.attributes)
+            : [],
+        }));
+        newGroups[key] = norm;
       });
-      setListings(sorted);
+
+      // Filter outgeldige keys weer uit (geen URL)
+      const filteredGroups: { [key: string]: Listing[] } = {};
+      Object.entries(newGroups).forEach(([k,v])=>{
+        if(/^https?:\/\//i.test(k)) {
+          filteredGroups[k]=v;
+        }
+      });
+
+      setGroups(filteredGroups);
       // Update last updated time after initial fetch
       setLastTimestamp(new Date());
       setIsLoading(false);
@@ -325,6 +379,11 @@ const Dashboard: React.FC = () => {
     // so it runs on mount and whenever schedule changes internally
   }, [schedule]); // Rerun if schedule state changes
 
+  // Totaal van gefilterde items (voor Live Items Feed)
+  const totalFilteredCount = useMemo(()=>{
+    return groupKeys.reduce((acc,key)=>acc+getFilteredItems(key).length,0);
+  },[groupKeys, groups]);
+
   if (isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
@@ -355,7 +414,7 @@ const Dashboard: React.FC = () => {
               alignItems={{ xs: 'flex-start', sm: 'center' }} // Responsive alignment
             >
               <Typography variant="h6" component="h2" sx={{ mb: { xs: 1, sm: 0 } }}> {/* Margin bottom on mobile */}
-                Live Items Feed ({listings.length})
+                Live Items Feed ({totalFilteredCount})
               </Typography>
               <Stack 
                 direction={{ xs: 'column', md: 'row' }} // Laatste groep kan ook stacken op mobiel/tablet
@@ -393,129 +452,141 @@ const Dashboard: React.FC = () => {
             </Alert>
           )}
 
-          <Grid container spacing={2} sx={{ p: 2 }}>
-            <AnimatePresence initial={false}>
-              {listings.map((item) => (
-                <Grid item xs={12} key={item.id} component={motion.div}
-                  layout
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  transition={{ duration: 0.25 }}
-                >
-                  <Card 
-                    elevation={3} 
-                    sx={{
-                      display: 'flex',
-                      flexDirection: { xs: 'column', md: 'row' }, // Responsive direction
-                      mb: 4, 
-                      borderRadius: 2, 
-                      overflow: 'hidden', 
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                    }}
+          {/* Tabs for targetUrls */}
+          {groupKeys.length>1 && (
+            <Tabs value={tabIndex} onChange={(_,v)=>setTabIndex(v)} variant="scrollable" scrollButtons="auto" sx={{ mb:2 }}>
+              {groupKeys.map((key) => (
+                <Tab key={key} label={`${getTabLabel(key)} (${getFilteredItems(key).length})`} />
+              ))}
+            </Tabs>
+          )}
+
+          {/* Content for selected tab */}
+          {groupKeys.length>0 && (
+            <Grid container spacing={2} sx={{ p: 2 }}>
+              <AnimatePresence initial={false}>
+                {getFilteredItems(groupKeys[tabIndex]).map((item)=>(
+                  <Grid item xs={12} key={item.id} component={motion.div}
+                    layout
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    transition={{ duration: 0.25 }}
                   >
-                    {/* Left side */}
-                    <Box 
+                    <Card 
+                      elevation={3} 
                       sx={{
-                        width: { xs: '100%', md: 220 }, // Responsive width
-                        px: 3, py: 4, 
-                        bgcolor: 'primary.main', 
-                        color: 'primary.contrastText', 
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        alignItems: 'center' 
+                        display: 'flex',
+                        flexDirection: { xs: 'column', md: 'row' }, // Responsive direction
+                        mb: 4, 
+                        borderRadius: 2, 
+                        overflow: 'hidden', 
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
                       }}
                     >
-                       <Chip
-                         label={item.seller || item.title.split(' ')[0]}
-                         sx={{
-                            bgcolor: alpha(theme.palette.common.black, 0.2),
-                            color: '#fff',
-                            mb: { xs: 2, md: 3 }, // Aangepaste margin voor mobiel
-                            fontWeight: 600,
-                            fontSize: 14
-                         }}
-                       />
-                       {item.imageUrl ? (
-                           <Avatar 
-                             src={getProxiedImageUrl(item.imageUrl)} 
-                             alt={item.title} 
-                             sx={{ width: { xs: 100, md: 120 }, height: { xs: 100, md: 120 }, mb: { xs: 2, md: 3 } }} // Responsive avatar
-                           />
-                       ) : (
-                           <Avatar 
+                      {/* Left side */}
+                      <Box 
+                        sx={{
+                          width: { xs: '100%', md: 220 }, // Responsive width
+                          px: 3, py: 4, 
+                          bgcolor: 'primary.main', 
+                          color: 'primary.contrastText', 
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          alignItems: 'center' 
+                        }}
+                      >
+                         <Chip
+                           label={item.seller || item.title.split(' ')[0]}
+                           sx={{
+                              bgcolor: alpha(theme.palette.common.black, 0.2),
+                              color: '#fff',
+                              mb: { xs: 2, md: 3 }, // Aangepaste margin voor mobiel
+                              fontWeight: 600,
+                              fontSize: 14
+                           }}
+                         />
+                         {item.imageUrl ? (
+                             <Avatar 
+                               src={getProxiedImageUrl(item.imageUrl)} 
+                               alt={item.title} 
+                               sx={{ width: { xs: 100, md: 120 }, height: { xs: 100, md: 120 }, mb: { xs: 2, md: 3 } }} // Responsive avatar
+                             />
+                         ) : (
+                             <Avatar 
+                               sx={{ 
+                                 width: { xs: 100, md: 120 }, height: { xs: 100, md: 120 }, mb: { xs: 2, md: 3 }, // Responsive avatar
+                                 bgcolor: 'background.paper',
+                                 color: 'text.secondary'
+                              }}>
+                                 {item.title.charAt(0)}
+                             </Avatar>
+                         )}
+                         <Chip
+                           label={item.price}
+                           sx={{
+                             bgcolor: alpha(theme.palette.common.black, 0.2),
+                             color: '#fff',
+                             fontWeight: 600,
+                             fontSize: 14
+                           }}
+                          />
+                      </Box>
+                      {/* Right side */}
+                      <Box sx={{ flex: 1, backgroundColor: 'background.paper', p: { xs: 2, md: 3 }, display: 'flex', flexDirection: 'column' }}> {/* Responsive padding */}
+                         <CardContent sx={{ flex: '1 0 auto', pb: 0 }}>
+                               <Typography variant="h5" component="div" sx={{ fontWeight: 700, color: 'text.primary', mb: 2, fontSize: { xs: '1.25rem', md: '1.5rem' } }}> {/* Responsive font size */}
+                                   {item.title}
+                               </Typography>
+                               <Typography variant="body1" sx={{ color: 'text.secondary', mb: 2, fontSize: { xs: '0.875rem', md: '1rem' } }}> {/* Responsive font size */}
+                                   {item.description}
+                               </Typography>
+                           </CardContent>
+                           <CardActions 
                              sx={{ 
-                               width: { xs: 100, md: 120 }, height: { xs: 100, md: 120 }, mb: { xs: 2, md: 3 }, // Responsive avatar
-                               bgcolor: 'background.paper',
-                               color: 'text.secondary'
-                            }}>
-                               {item.title.charAt(0)}
-                           </Avatar>
-                       )}
-                       <Chip
-                         label={item.price}
-                         sx={{
-                           bgcolor: alpha(theme.palette.common.black, 0.2),
-                           color: '#fff',
-                           fontWeight: 600,
-                           fontSize: 14
-                         }}
-                        />
-                    </Box>
-                    {/* Right side */}
-                    <Box sx={{ flex: 1, backgroundColor: 'background.paper', p: { xs: 2, md: 3 }, display: 'flex', flexDirection: 'column' }}> {/* Responsive padding */}
-                       <CardContent sx={{ flex: '1 0 auto', pb: 0 }}>
-                           <Typography variant="h5" component="div" sx={{ fontWeight: 700, color: 'text.primary', mb: 2, fontSize: { xs: '1.25rem', md: '1.5rem' } }}> {/* Responsive font size */}
-                               {item.title}
-                           </Typography>
-                           <Typography variant="body1" sx={{ color: 'text.secondary', mb: 2, fontSize: { xs: '0.875rem', md: '1rem' } }}> {/* Responsive font size */}
-                               {item.description}
-                           </Typography>
-                       </CardContent>
-                       <CardActions 
-                         sx={{ 
-                           pt: 1, 
-                           display: 'flex', 
-                           flexDirection: { xs: 'column', sm: 'row' }, 
-                           justifyContent: 'space-between', 
-                           alignItems: { xs: 'stretch', sm: 'center' } 
-                         }}
-                       >
-                          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: { xs: 1, sm: 0 }, width: { xs: '100%', sm: 'auto'} }}>
-                              {item.url && (
-                                  <Button 
-                                    size="small" 
-                                    href={item.url} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    sx={{ width: { xs: '100%', sm: 'auto' } }} 
-                                  >
-                                      Zie omschrijving
-                                  </Button>
-                              )}
-                          </Stack>
-                          <Stack direction="row" spacing={1} alignItems="center" sx={{ color: 'text.disabled', fontSize: { xs: '0.75rem', sm: 'caption.fontSize' } }}> {/* Smaller text on mobile */}
-                             <AccessTime fontSize="inherit" />
-                             <Typography variant="caption">{item.date || 'N/A'}</Typography>
-                             <Typography variant="caption">•</Typography>
-                             <Typography variant="caption">{item.location || 'N/A'}</Typography>
-                          </Stack>
-                       </CardActions>
-                       {item.attributes && item.attributes.length > 0 && (
-                         <Box sx={{ px: { xs: 2, md: 3 }, pb: { xs: 2, md: 2 }, pt: 1 }}> {/* Responsive padding */}
-                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap> {/* useFlexGap for better spacing with wrap */}
-                                {item.attributes.map((attr, index) => (
-                                    <Chip key={index} label={attr} size="small" variant="outlined" />
-                                ))}
-                            </Stack>
-                         </Box>
-                       )}
-                    </Box>
-                  </Card>
-                </Grid>
-              ))}
-            </AnimatePresence>
-          </Grid>
+                               pt: 1, 
+                               display: 'flex', 
+                               flexDirection: { xs: 'column', sm: 'row' }, 
+                               justifyContent: 'space-between', 
+                               alignItems: { xs: 'stretch', sm: 'center' } 
+                             }}
+                           >
+                              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: { xs: 1, sm: 0 }, width: { xs: '100%', sm: 'auto'} }}>
+                                  {item.url && (
+                                      <Button 
+                                        size="small" 
+                                        href={item.url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        sx={{ width: { xs: '100%', sm: 'auto' } }} 
+                                      >
+                                          Zie omschrijving
+                                      </Button>
+                                  )}
+                              </Stack>
+                              <Stack direction="row" spacing={1} alignItems="center" sx={{ color: 'text.disabled', fontSize: { xs: '0.75rem', sm: 'caption.fontSize' } }}> {/* Smaller text on mobile */}
+                                 <AccessTime fontSize="inherit" />
+                                 <Typography variant="caption">{item.date || 'N/A'}</Typography>
+                                 <Typography variant="caption">•</Typography>
+                                 <Typography variant="caption">{item.location || 'N/A'}</Typography>
+                              </Stack>
+                           </CardActions>
+                           {item.attributes && item.attributes.length > 0 && (
+                             <Box sx={{ px: { xs: 2, md: 3 }, pb: { xs: 2, md: 2 }, pt: 1 }}> {/* Responsive padding */}
+                                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap> {/* useFlexGap for better spacing with wrap */}
+                                    {item.attributes.map((attr, index) => (
+                                        <Chip key={index} label={attr} size="small" variant="outlined" />
+                                    ))}
+                                </Stack>
+                             </Box>
+                           )}
+                        </Box>
+                      </Card>
+                    </Grid>
+                  ))}
+                </AnimatePresence>
+              </Grid>
+          )}
         </Box>
       </Box>
     </>
