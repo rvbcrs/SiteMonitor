@@ -443,51 +443,65 @@ async function sendEmailNotification(content, selector) {
         auth: config.email.auth,
     });
 
-    // Build email HTML matching dashboard card layout
+    // Build email HTML using tables for better compatibility
     const emailHtml = `
-      <div style="font-family: Arial, Helvetica, sans-serif; max-width: 800px; margin: 0 auto;">
-        <h1 style="color: #333;">Nieuwe items gevonden</h1>
-        <p style="color: #666;">De volgende nieuwe items werden gevonden op ${config.website.targetUrl}:</p>
+      <div style="font-family: Arial, Helvetica, sans-serif; max-width: 800px; margin: 10px auto; background-color: #f4f4f4; padding: 20px;">
+        <h1 style="color: #333; text-align: center;">Nieuwe items gevonden</h1>
+        <p style="color: #666; text-align: center;">De volgende nieuwe items werden gevonden voor ${selector}:</p>
         <div style="margin-top: 20px;">
           ${content.items.map(item => `
-            <div style="display: flex; flex-direction: row; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 8px; overflow: hidden;">
-              <!-- Left side -->
-              <div style="width: 220px; padding: 16px; background-color: #c96b60; color: #fff; text-align: center;">
-                <div style="margin-bottom: 12px;">
-                  <span style="display: inline-block; background-color: #b45b52; color: #fff; padding: 4px 8px; border-radius: 16px; font-weight: 600; font-size: 0.875rem;">
-                    ${item.seller || item.title.split(' ')[0]}
-                  </span>
-                </div>
-                <div style="margin-bottom: 12px;">
-                  ${item.image ? `<img src="${item.image}" alt="${item.title}" style="width: 120px; height: 120px; object-fit: cover; border-radius: 4px;">`
-            : `<div style="width: 120px; height: 120px; background: #ccc; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #555;">
-                        ${item.title.charAt(0)}
-                      </div>`}
-                </div>
-                <div>
-                  <span style="display: inline-block; background-color: #b45b52; color: #fff; padding: 4px 8px; border-radius: 16px; font-weight: 600; font-size: 0.875rem;">
-                    ${item.price}
-                  </span>
-                </div>
-              </div>
-              <!-- Right side -->
-              <div style="flex: 1; background: #fff; padding: 16px; display: flex; flex-direction: column;">
-                <h3 style="margin: 0 0 8px; font-size: 1.25rem; color: #000;">${item.title}</h3>
-                <p style="margin: 0 0 12px; font-size: 1rem; color: #333;">${item.description}</p>
-                <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 12px;">
-                  ${item.url ? `<a href="${item.url}" style="padding: 6px 12px; background: #1976d2; color: #fff; text-decoration: none; border-radius: 4px; font-size: 0.875rem;">Zie omschrijving</a>` : ''}
-                  <span style="font-size: 0.75rem; color: #888;">${new Date(item.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                  <span style="font-size: 0.75rem; color: #888;">${item.location}</span>
-                </div>
-                <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                  ${item.attributes.map(attr => `<span style="background-color: #f0f0f0; border-radius: 4px; padding: 3px 7px; font-size: 0.75rem; color: #444; margin-right: 4px; margin-bottom: 4px; display: inline-block;">${attr}</span>`).join('')}
-                </div>
-              </div>
-            </div>
+            <table cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; background-color: #ffffff;">
+              <tr>
+                <!-- Left side (Image, Price, Seller) -->
+                <td width="220" style="padding: 20px; background-color: #c96b60; color: #fff; text-align: center; vertical-align: top;">
+                  <div style="margin-bottom: 15px;">
+                    <span style="display: inline-block; background-color: rgba(0,0,0,0.2); color: #fff; padding: 4px 10px; border-radius: 16px; font-weight: 600; font-size: 0.875rem; word-break: break-all;">
+                      ${item.seller || item.title.split(' ')[0]}
+                    </span>
+                  </div>
+                  <div style="margin-bottom: 15px;">
+                    ${item.image ? `<img src="${item.image}" alt="${item.title}" style="width: 120px; height: 120px; object-fit: cover; border-radius: 4px; border: 1px solid #eee;">`
+            : `<div style="width: 120px; height: 120px; background: #eee; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; color: #888;">
+                                  ${item.title ? item.title.charAt(0) : '?'}
+                                </div>`}
+                  </div>
+                  <div>
+                    <span style="display: inline-block; background-color: rgba(0,0,0,0.2); color: #fff; padding: 4px 10px; border-radius: 16px; font-weight: 600; font-size: 0.875rem;">
+                      ${item.price || 'N/A'}
+                    </span>
+                  </div>
+                </td>
+                <!-- Right side (Details) -->
+                <td style="padding: 20px; vertical-align: top;">
+                  <h3 style="margin: 0 0 10px; font-size: 1.3rem; color: #111; line-height: 1.3;">${item.title}</h3>
+                  <p style="margin: 0 0 15px; font-size: 1rem; color: #444; line-height: 1.5;">${item.description || 'Geen omschrijving beschikbaar.'}</p>
+                  <!-- Item Link -->
+                  ${item.url ? `
+                  <p style="margin: 0 0 15px;">
+                    <a href="${item.url}" target="_blank" style="display: inline-block; padding: 8px 16px; background: #1976d2; color: #ffffff; text-decoration: none; border-radius: 4px; font-size: 0.9rem; font-weight: bold;">
+                      Bekijk Item
+                    </a>
+                  </p>` : ''}
+                  <!-- Meta Info (Date, Location) -->
+                  <p style="margin: 0 0 10px; font-size: 0.8rem; color: #777;">
+                    ${item.date ? `Datum: ${item.date}` : ''}
+                    ${item.date && item.location ? ' &bull; ' : ''}
+                    ${item.location ? `Locatie: ${item.location}` : ''}
+                    ${!item.date && !item.location ? 'Geen datum/locatie info' : ''}
+                  </p>
+                  <!-- Attributes -->
+                  ${item.attributes && item.attributes.length > 0 ? `
+                  <div style="margin-top: 10px;">
+                    ${item.attributes.map(attr => `<span style="background-color: #eee; border: 1px solid #ddd; border-radius: 4px; padding: 3px 8px; font-size: 0.75rem; color: #555; margin-right: 5px; margin-bottom: 5px; display: inline-block;">${attr}</span>`).join(' ')}
+                  </div>
+                  ` : ''}
+                </td>
+              </tr>
+            </table>
           `).join('')}
         </div>
-        <p style="margin-top: 20px; color: #666; font-size: 12px;">
-          This email was sent by the SiteMonitor application. You can manage your notification settings in the dashboard.
+        <p style="margin-top: 30px; color: #888; font-size: 0.75rem; text-align: center;">
+          Deze e-mail is automatisch verzonden door de SiteMonitor applicatie.
         </p>
       </div>
     `;

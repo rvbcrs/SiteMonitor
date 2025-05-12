@@ -290,29 +290,75 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // Helper function to parse Dutch date string to Date object
-  const parseDutchDate = (dateStr: string): Date => {
-    if (dateStr.toLowerCase() === 'vandaag') {
-      return new Date();
+  // Helper function to parse Dutch date string to Date object for sorting
+  const parseSortableDate = (dateStr: string | undefined | null): Date => {
+    if (!dateStr) return new Date(0); // Treat null/undefined as oldest
+
+    const lowerDateStr = dateStr.toLowerCase();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalize today to start of day
+
+    if (lowerDateStr === 'vandaag') {
+      return today;
     }
-    
+    if (lowerDateStr === 'gisteren') {
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+      return yesterday;
+    }
+    if (lowerDateStr === 'eergisteren') {
+      const dayBeforeYesterday = new Date(today);
+      dayBeforeYesterday.setDate(today.getDate() - 2);
+      return dayBeforeYesterday;
+    }
+
+    // Try parsing 'dd mmm' or 'dd mmm yy' format (Marktplaats format)
     const monthMap: { [key: string]: number } = {
       'jan': 0, 'feb': 1, 'mrt': 2, 'apr': 3, 'mei': 4, 'jun': 5,
       'jul': 6, 'aug': 7, 'sep': 8, 'okt': 9, 'nov': 10, 'dec': 11
     };
-    
-    const parts = dateStr.split(' ');
-    if (parts.length === 3) {
-      const day = parseInt(parts[0], 10);
-      const month = monthMap[parts[1].toLowerCase()];
-      let year = parseInt(parts[2], 10);
-      // if two-digit year, assume 2000+year
-      if (!isNaN(year) && year < 100) {
-        year += 2000;
-      }
-      return new Date(year, month, day);
+    // Remove dots and apostrophes, split by space
+    const parts = lowerDateStr.replace(/[.'']/g, '').split(' ');
+    if (parts.length >= 2) {
+       const day = parseInt(parts[0], 10);
+       const monthStr = parts[1];
+       const month = monthMap[monthStr];
+
+       if (!isNaN(day) && month !== undefined) {
+         let year = today.getFullYear(); // Assume current year if not specified
+         if (parts.length === 3) {
+             let parsedYear = parseInt(parts[2], 10);
+             if (!isNaN(parsedYear)) {
+                // Handle 'yy format -> 20yy
+                year = parsedYear < 100 ? 2000 + parsedYear : parsedYear;
+             }
+         }
+         // If the parsed date (e.g., Dec) is later than today, and no year was specified, assume it was last year
+         const potentialDate = new Date(year, month, day);
+         if (potentialDate > today && parts.length < 3) {
+             year--;
+         }
+         const resultDate = new Date(year, month, day);
+         resultDate.setHours(0, 0, 0, 0); // Normalize time
+         if (!isNaN(resultDate.getTime())) {
+             return resultDate;
+         }
+       }
     }
-    return new Date(); // fallback
+
+    // Fallback: try standard JS date parsing (e.g., ISO strings)
+    try {
+        const standardDate = new Date(dateStr);
+        if (!isNaN(standardDate.getTime())) {
+            standardDate.setHours(0, 0, 0, 0); // Normalize time
+            return standardDate;
+        }
+    } catch (_) { /* Ignore parsing errors */ }
+
+
+    // Return a very old date if parsing fails completely
+    console.warn(`[Dashboard] Could not parse date string for sorting: "${dateStr}"`);
+    return new Date(0);
   };
 
   const formatDate = (dateString: string) => {
@@ -469,7 +515,30 @@ const Dashboard: React.FC = () => {
           {groupKeys.length>0 && (
             <Grid container spacing={2} sx={{ p: 2 }}>
               <AnimatePresence initial={false}>
-                {getFilteredItems(groupKeys[tabIndex]).map((item)=>(
+                {getFilteredItems(groupKeys[tabIndex])
+                  .sort((a, b) => {
+                    const dateA = a.date?.toLowerCase();
+                    const dateB = b.date?.toLowerCase();
+
+                    // Assign ranks: Vandaag (0), Gisteren (1), Eergisteren (2), Other (3)
+                    const rankA = dateA === 'vandaag' ? 0 : dateA === 'gisteren' ? 1 : dateA === 'eergisteren' ? 2 : 3;
+                    const rankB = dateB === 'vandaag' ? 0 : dateB === 'gisteren' ? 1 : dateB === 'eergisteren' ? 2 : 3;
+
+                    // Sort by rank first (ascending: Vandaag first)
+                    if (rankA !== rankB) {
+                      return rankA - rankB;
+                    }
+
+                    // If ranks are the same (e.g., both are 'Other' or both are 'Vandaag'),
+                    // sort by actual parsed date (descending: newest first)
+                    const parsedDateA = parseSortableDate(a.date);
+                    const parsedDateB = parseSortableDate(b.date);
+
+                    // Sort newest first by comparing timestamps
+                    return parsedDateB.getTime() - parsedDateA.getTime();
+
+                  }) // End sort
+                  .map((item)=>( // Start map
                   <Grid item xs={12} key={item.id} component={motion.div}
                     layout
                     initial={{ opacity: 0, y: -10 }}

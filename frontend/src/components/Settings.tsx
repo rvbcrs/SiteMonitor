@@ -67,7 +67,6 @@ interface SettingsState {
   emailSubject: string;
   emailApiKey: string;
   theme: string;
-  websitesJson: string;
 }
 
 const defaultState: SettingsState = {
@@ -89,7 +88,6 @@ const defaultState: SettingsState = {
   emailSubject: 'SiteMonitor Notification',
   emailApiKey: '',
   theme: 'light',
-  websitesJson: '',
 };
 
 const Settings: React.FC = () => {
@@ -132,7 +130,6 @@ const Settings: React.FC = () => {
         emailSubject: email.subject || 'SiteMonitor Notification',
         emailApiKey: email.apiKey || '',
         theme: theme || initialTheme,
-        websitesJson: '',
       };
       setForm(loadedForm);
       if (theme !== themeName) {
@@ -317,9 +314,6 @@ const Settings: React.FC = () => {
                       <MenuItem value="orange">Orange</MenuItem>
                     </Select>
                   </FormControl>
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField label="Websites JSON" multiline minRows={6} fullWidth value={form.websitesJson} onChange={e=>update('websitesJson', e.target.value)} helperText="Array van website-configuraties (zie README)" />
                 </Grid>
               </Grid>
             </CardContent>
