@@ -238,7 +238,13 @@ const Dashboard: React.FC = () => {
 
   // Fetch initial items on component mount
   useEffect(() => {
-    fetchItems();
+    // Check if settings were changed
+    if (localStorage.getItem('settingsChanged') === 'true') {
+      handleCheckNow();
+      localStorage.removeItem('settingsChanged');
+    } else {
+      fetchItems();
+    }
   }, []);
 
   // New countdown effect driven by nextServerCheck
@@ -450,13 +456,31 @@ const Dashboard: React.FC = () => {
       <Box
         sx={{
           minHeight: '100vh',
-          py: 6,
+          py: 0.5,
           display: 'flex',
           justifyContent: 'center',
         }}
       >
-        <Box sx={{ width: '100%', maxWidth: 1200, mx: 2 }}>
-          <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+        <Box sx={{
+          width: '100%',
+          maxWidth: 1200,
+          mx: 2,
+          backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(30,30,30,0.55)' : 'rgba(255,255,255,0.55)',
+          backdropFilter: 'blur(16px)',
+          borderRadius: 4,
+          boxShadow: '0 8px 32px 0 rgba(31,38,135,0.37)',
+          border: '1px solid rgba(255,255,255,0.18)',
+          p: { xs: 2, sm: 4 },
+        }}>
+          <Box sx={{ 
+            p: 2, 
+            borderBottom: 1, 
+            borderColor: 'divider',
+            background: 'none',
+            boxShadow: 'none',
+            borderRadius: 0,
+            mb: 2
+          }}>
             <Stack 
               direction={{ xs: 'column', sm: 'row' }} // Responsive direction
               spacing={{ xs: 1, sm: 2 }} // Responsive spacing
@@ -550,11 +574,15 @@ const Dashboard: React.FC = () => {
                       elevation={3} 
                       sx={{
                         display: 'flex',
-                        flexDirection: { xs: 'column', md: 'row' }, // Responsive direction
+                        flexDirection: { xs: 'column', md: 'row' },
                         mb: 1, 
                         borderRadius: 2, 
                         overflow: 'hidden', 
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                        backgroundColor: (theme) => alpha(theme.palette.background.paper, 0.35),
+                        backdropFilter: 'blur(16px)',
+                        border: '1px solid rgba(255,255,255,0.18)',
+                        boxShadow: '0 8px 32px 0 rgba(31,38,135,0.37)',
+                        color: theme => theme.palette.text.primary,
                       }}
                     >
                       {/* Left side */}
